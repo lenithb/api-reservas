@@ -1,8 +1,19 @@
-# Reservation API
+# API de reservas
 
-Primera versión de una API REST genérica para administrar recursos reservables, clientes y reservas. Puede servir como base para canchas, consultorios, salas, habitaciones, vehículos o turnos profesionales.
+Esta es una primera versión de una API REST para manejar recursos, clientes y reservas. La idea es que sirva como punto de partida para distintos casos: una cancha, un consultorio, una sala, una habitación, un vehículo o cualquier otra cosa que se pueda reservar por horario.
 
-El proyecto contiene únicamente backend. La prioridad de esta versión es ofrecer una base funcional y fácil de continuar, sin autenticación ni infraestructura avanzada.
+Es un proyecto solamente de backend. Por ahora busco resolver bien lo esencial: crear reservas, evitar cruces de horarios y permitir cancelaciones. Todavía no tiene autenticación ni componentes pensados para producción, así que queda bastante lugar para seguir practicando y mejorándolo.
+
+## Qué se puede hacer
+
+- Crear, consultar, editar y eliminar recursos reservables.
+- Crear y administrar clientes.
+- Registrar reservas con estados `pending`, `confirmed`, `cancelled` y `completed`.
+- Consultar si un recurso está disponible en un rango de fechas.
+- Evitar reservas superpuestas sobre el mismo recurso.
+- Cancelar una reserva sin borrarla de la base de datos.
+- Filtrar recursos, clientes y reservas.
+- Paginar el listado de reservas.
 
 ## Tecnologías
 
@@ -15,7 +26,100 @@ El proyecto contiene únicamente backend. La prioridad de esta versión es ofrec
 - Uvicorn
 - Pytest y HTTPX
 
-## Estructura
+## Cómo ponerlo en marcha
+
+Los siguientes comandos están pensados para Linux Mint y deben ejecutarse desde la raíz del proyecto.
+
+Primero hay que tener instalados Python, Pip y el módulo para crear entornos virtuales:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+python3 --version
+```
+
+Después se crea y activa el entorno virtual:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Con el entorno activo, se instalan las dependencias:
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+## Configuración
+
+El proyecto trae un archivo de ejemplo para la configuración:
+
+```bash
+cp .env.example .env
+```
+
+Para esta primera versión solamente se configura la conexión a SQLite:
+
+```env
+DATABASE_URL=sqlite:///./reservations.db
+```
+
+El archivo `reservations.db` se crea en la raíz del proyecto y está ignorado por Git.
+
+## Crear la base de datos
+
+Alembic se encarga de crear y actualizar las tablas:
+
+```bash
+alembic upgrade head
+```
+
+Si quieres comprobar qué migración está aplicada:
+
+```bash
+alembic current
+```
+
+La aplicación no crea las tablas automáticamente cuando arranca. Eso queda a cargo de Alembic para que los cambios futuros del esquema puedan manejarse con migraciones.
+
+## Cargar algunos datos de ejemplo
+
+Hay un script pequeño que agrega tres recursos, tres clientes, dos reservas confirmadas y una reserva cancelada:
+
+```bash
+python -m scripts.seed
+```
+
+Si la base ya contiene recursos, el script no vuelve a insertar los datos.
+
+## Ejecutar la API
+
+```bash
+uvicorn app.main:app --reload
+```
+
+La API quedará escuchando en:
+
+```text
+http://127.0.0.1:8000
+```
+
+FastAPI genera la documentación interactiva automáticamente:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI: `http://127.0.0.1:8000/openapi.json`
+
+## Ejecutar las pruebas
+
+```bash
+pytest
+```
+
+Las pruebas usan una base SQLite temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente.
+
+## Estructura del proyecto
 
 ```text
 api-reservas/
@@ -39,159 +143,64 @@ api-reservas/
 │   └── services/
 │       └── reservation_service.py
 ├── alembic/
-│   ├── versions/
-│   │   └── 20260728_0001_initial_schema.py
-│   ├── env.py
-│   └── script.py.mako
+│   └── versions/
 ├── scripts/
 │   └── seed.py
 ├── tests/
 ├── .env.example
-├── .gitignore
 ├── alembic.ini
 ├── requirements.txt
 └── README.md
 ```
 
-Los routers reciben y devuelven datos HTTP. La lógica de fechas, disponibilidad, actualización y cancelación está en `reservation_service.py`. No se agregó una capa de repositorios para mantener sencilla esta primera versión.
+Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas, disponibilidad, actualización y cancelación viven en `reservation_service.py`. Para no complicar de más esta etapa, no se agregó una capa de repositorios.
 
-## Requisitos
+## Endpoints disponibles
 
-En Linux Mint se necesita Python 3.12 o una versión compatible, junto con los paquetes para crear entornos virtuales:
+### Estado de la API
 
-```bash
-sudo apt update
-sudo apt install python3 python3-venv python3-pip
-python3 --version
-```
-
-## Crear el entorno virtual
-
-Desde la raíz del proyecto:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-## Instalar dependencias
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-## Configuración
-
-Copiar el archivo de ejemplo:
-
-```bash
-cp .env.example .env
-```
-
-El valor predeterminado es:
-
-```env
-DATABASE_URL=sqlite:///./reservations.db
-```
-
-La ruta relativa se resuelve desde el directorio en el que se ejecuta la aplicación.
-
-## Migraciones
-
-Crear o actualizar las tablas mediante Alembic:
-
-```bash
-alembic upgrade head
-```
-
-Consultar la migración aplicada:
-
-```bash
-alembic current
-```
-
-La aplicación no ejecuta `Base.metadata.create_all()` al iniciar. Alembic es el mecanismo principal para administrar el esquema. Las pruebas sí crean su esquema temporal directamente para mantener el aislamiento.
-
-## Datos iniciales
-
-Después de aplicar las migraciones, cargar tres recursos, tres clientes, dos reservas confirmadas y una cancelada:
-
-```bash
-python -m scripts.seed
-```
-
-El script evita volver a cargar los datos si la base ya contiene recursos.
-
-## Ejecutar la API
-
-```bash
-uvicorn app.main:app --reload
-```
-
-La API queda disponible en `http://127.0.0.1:8000`.
-
-## Swagger
-
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- Esquema OpenAPI: `http://127.0.0.1:8000/openapi.json`
-
-## Ejecutar las pruebas
-
-```bash
-pytest
-```
-
-Las pruebas usan un archivo SQLite temporal separado para cada caso. Cubren creación, rangos inválidos, duraciones, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y actualización con nueva comprobación de disponibilidad.
-
-## Endpoints
-
-### Salud
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| `GET` | `/health` | Comprueba que la API responde |
+| Método | Ruta      | Para qué sirve                        |
+| ------ | --------- | ------------------------------------- |
+| `GET`  | `/health` | Comprueba que la API está funcionando |
 
 ### Recursos
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `POST` | `/resources` | Crea un recurso |
-| `GET` | `/resources` | Lista recursos |
-| `GET` | `/resources/{resource_id}` | Obtiene un recurso |
-| `PATCH` | `/resources/{resource_id}` | Actualiza parcialmente un recurso |
-| `DELETE` | `/resources/{resource_id}` | Elimina un recurso sin reservas |
-| `GET` | `/resources/{resource_id}/availability` | Consulta disponibilidad entre dos fechas |
+| Método   | Ruta                                    | Para qué sirve                            |
+| -------- | --------------------------------------- | ----------------------------------------- |
+| `POST`   | `/resources`                            | Crear un recurso                          |
+| `GET`    | `/resources`                            | Listar recursos                           |
+| `GET`    | `/resources/{resource_id}`              | Consultar un recurso                      |
+| `PATCH`  | `/resources/{resource_id}`              | Modificar parte de un recurso             |
+| `DELETE` | `/resources/{resource_id}`              | Eliminar un recurso sin reservas          |
+| `GET`    | `/resources/{resource_id}/availability` | Consultar disponibilidad entre dos fechas |
 
-El listado acepta `resource_type` e `is_active`.
-
-La disponibilidad recibe `start_at` y `end_at` en formato ISO 8601. Devuelve `available` y las reservas activas que generan el conflicto.
+El listado se puede filtrar por `resource_type` e `is_active`.
 
 ### Clientes
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `POST` | `/customers` | Crea un cliente |
-| `GET` | `/customers` | Lista clientes |
-| `GET` | `/customers/{customer_id}` | Obtiene un cliente |
-| `PATCH` | `/customers/{customer_id}` | Actualiza parcialmente un cliente |
-| `DELETE` | `/customers/{customer_id}` | Elimina un cliente sin reservas |
+| Método   | Ruta                       | Para qué sirve                   |
+| -------- | -------------------------- | -------------------------------- |
+| `POST`   | `/customers`               | Crear un cliente                 |
+| `GET`    | `/customers`               | Listar clientes                  |
+| `GET`    | `/customers/{customer_id}` | Consultar un cliente             |
+| `PATCH`  | `/customers/{customer_id}` | Modificar parte de un cliente    |
+| `DELETE` | `/customers/{customer_id}` | Eliminar un cliente sin reservas |
 
-El parámetro `search` busca coincidencias parciales en el nombre o email.
+El parámetro `search` permite buscar coincidencias en el nombre o en el email.
 
 ### Reservas
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `POST` | `/reservations` | Crea una reserva |
-| `GET` | `/reservations` | Lista reservas con paginación |
-| `GET` | `/reservations/{reservation_id}` | Obtiene una reserva |
-| `PATCH` | `/reservations/{reservation_id}` | Actualiza una reserva |
-| `POST` | `/reservations/{reservation_id}/cancel` | Cancela una reserva |
+| Método  | Ruta                                    | Para qué sirve        |
+| ------- | --------------------------------------- | --------------------- |
+| `POST`  | `/reservations`                         | Crear una reserva     |
+| `GET`   | `/reservations`                         | Listar reservas       |
+| `GET`   | `/reservations/{reservation_id}`        | Consultar una reserva |
+| `PATCH` | `/reservations/{reservation_id}`        | Modificar una reserva |
+| `POST`  | `/reservations/{reservation_id}/cancel` | Cancelar una reserva  |
 
-El listado acepta `resource_id`, `customer_id`, `status`, `start_date`, `end_date`, `page` y `limit`. `start_date` y `end_date` filtran por la fecha de inicio de la reserva. `limit` admite entre 1 y 100 elementos.
+El listado acepta los filtros `resource_id`, `customer_id`, `status`, `start_date` y `end_date`. También usa `page` y `limit` para la paginación; el límite máximo es de 100 resultados por página.
 
-La respuesta paginada tiene esta forma:
+Una respuesta paginada tiene este formato:
 
 ```json
 {
@@ -202,37 +211,37 @@ La respuesta paginada tiene esta forma:
 }
 ```
 
-## Fechas y zona horaria
+## Cómo se manejan las fechas
 
-Las fechas de reservas deben incluir una zona horaria. Por ejemplo:
+Todas las fechas de una reserva deben incluir la zona horaria. Por ejemplo, una fecha de Argentina puede enviarse así:
 
 ```text
 2026-08-01T10:00:00-03:00
 ```
 
-Antes de guardar o comparar, la API normaliza las fechas a UTC. Las respuestas también se entregan en UTC y pueden verse con el sufijo `Z`:
+La API convierte esa fecha a UTC antes de guardarla o compararla. Por eso la misma hora aparecerá en la respuesta de esta manera:
 
 ```text
 2026-08-01T13:00:00Z
 ```
 
-No se aceptan fechas sin zona horaria. Esta versión no permite configurar zonas horarias diferentes por recurso o cliente.
+Las fechas sin zona horaria se rechazan. En esta etapa no hay una zona configurable para cada recurso o cliente.
 
-## Reglas de reservas
+## Reglas de las reservas
 
-- `start_at` debe ser anterior a `end_at`.
-- Una reserva nueva no puede comenzar en el pasado.
-- La duración mínima es de 30 minutos.
-- La duración máxima es de 8 horas.
-- Un recurso inactivo no acepta reservas nuevas ni cambios de horario.
-- Dos reservas no canceladas no pueden superponerse sobre un mismo recurso.
-- Una reserva que termina exactamente cuando comienza otra no produce conflicto.
-- Las reservas canceladas liberan el horario.
-- Al cambiar recurso, inicio o final se vuelve a consultar la disponibilidad y se excluye la propia reserva.
-- Las reservas no se eliminan físicamente desde la API.
-- Un recurso o cliente con reservas asociadas no puede eliminarse, incluso si esas reservas están canceladas.
+Una reserva debe cumplir estas condiciones:
 
-Los estados disponibles son `pending`, `confirmed`, `cancelled` y `completed`. Las transiciones implementadas son:
+- La fecha de inicio tiene que ser anterior a la fecha de finalización.
+- No puede comenzar en el pasado.
+- Debe durar como mínimo 30 minutos y como máximo 8 horas.
+- El recurso tiene que estar activo.
+- No puede cruzarse con otra reserva no cancelada del mismo recurso.
+
+Los horarios pueden tocarse en los extremos. Por ejemplo, si una reserva termina a las 11:00, otra puede comenzar exactamente a las 11:00.
+
+Cuando una reserva se cancela, conserva su registro pero deja de ocupar el horario. Si se cambia el recurso, la fecha de inicio o la fecha de finalización, la disponibilidad se comprueba otra vez sin comparar la reserva consigo misma.
+
+Los estados siguen este recorrido sencillo:
 
 ```text
 pending -> confirmed | cancelled
@@ -241,11 +250,11 @@ cancelled -> estado final
 completed -> estado final
 ```
 
-Las reservas nuevas solo pueden crearse como `pending` o `confirmed`.
+Una reserva nueva puede comenzar como `pending` o `confirmed`. Las reservas no tienen un endpoint de eliminación: se cancelan. Los recursos y clientes sí se pueden eliminar, siempre que no tengan ninguna reserva asociada.
 
-## Errores
+## Respuestas de error
 
-Las reglas de negocio usan un código estable y un mensaje legible. Por ejemplo:
+Los errores de negocio devuelven un código corto y un mensaje que explica el problema. Una superposición de horarios, por ejemplo, responde así:
 
 ```json
 {
@@ -256,26 +265,22 @@ Las reglas de negocio usan un código estable y un mensaje legible. Por ejemplo:
 }
 ```
 
-Se contemplan entidades inexistentes, email duplicado, fechas inválidas, recurso inactivo, conflicto de horario, eliminación no permitida y transición de estado inválida. Los errores internos de SQLAlchemy no se incluyen en la respuesta.
+También hay respuestas específicas para recursos, clientes o reservas inexistentes, emails repetidos, fechas incorrectas, recursos inactivos, eliminaciones no permitidas y cambios de estado inválidos. Los detalles internos de SQLAlchemy no se muestran al cliente.
 
-## Limitaciones actuales
+## Cosas que todavía faltan
 
-- SQLite es adecuado para desarrollo y una carga pequeña, no para alta concurrencia.
-- La comprobación de superposición se hace en el servicio y no cuenta todavía con una garantía transaccional fuerte ante solicitudes simultáneas.
-- Los handlers son asíncronos, pero usan SQLAlchemy síncrono; una futura versión con mayor carga debería adoptar sesiones asíncronas o mover el trabajo bloqueante a workers.
-- No hay autenticación, usuarios, roles ni permisos.
+Esta versión está pensada para aprender y seguir creciendo, no para usarla directamente en producción. Algunas limitaciones actuales son:
+
+- SQLite funciona bien para desarrollo y cargas pequeñas, pero no está pensado para mucha concurrencia.
+- La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
+- Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
+- No hay login, usuarios, roles ni permisos.
 - No hay horarios de apertura, días no laborables ni reservas recurrentes.
-- No existen pagos, precios, cupones, notificaciones ni recordatorios.
-- No hay reservas temporales, lista de espera ni calendario visual.
-- No se incluyen frontend, Docker, PostgreSQL, Redis, Celery ni configuración de producción.
+- Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
+- El proyecto no incluye frontend, Docker ni configuración de despliegue.
 
-## Próximas mejoras posibles
+## Ideas para continuar
 
-- Incorporar autenticación y permisos en una fase posterior.
-- Usar PostgreSQL y reforzar el control de concurrencia.
-- Agregar reglas de apertura y días no laborables.
-- Mejorar filtros y ordenamiento sin convertirlos todavía en un sistema genérico complejo.
-- Añadir reservas recurrentes, recordatorios y notificaciones cuando el dominio lo requiera.
-- Preparar configuración, observabilidad y despliegue para producción.
+Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, agregar autenticación y sumar reglas como horarios de apertura o días no laborables. Más adelante también voy incorporar reservas recurrentes y notificaciones.
 
-Estas mejoras no forman parte de la primera versión incluida en este repositorio.
+Nada de eso forma parte de esta primera versión; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.

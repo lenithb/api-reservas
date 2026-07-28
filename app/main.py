@@ -8,7 +8,7 @@ from app.routers import customers, reservations, resources
 app = FastAPI(
     title="Reservation API",
     version="0.1.0",
-    description="API REST básica para administrar recursos, clientes y reservas.",
+    description="API REST básica para adinistrar recursos, clientes y reservas.",
 )
 
 app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
