@@ -39,7 +39,7 @@ def validate_time_range(start_at: datetime, end_at: datetime) -> tuple[datetime,
         raise AppError(
             422,
             "RESERVATION_IN_PAST",
-            "No se pueden crear o mover reservas al pasado.",
+            "No se pueden crear, confirmar ni mover reservas al pasado.",
         )
 
     duration = end_at - start_at
@@ -296,7 +296,11 @@ def update_reservation(
         get_customer_or_error(db, customer_id)
 
     schedule_changed = bool({"resource_id", "start_at", "end_at"} & changes.keys())
-    if schedule_changed:
+    confirming_reservation = (
+        reservation.status == ReservationStatus.PENDING
+        and requested_status == ReservationStatus.CONFIRMED
+    )
+    if schedule_changed or confirming_reservation:
         resource = get_resource_or_error(db, resource_id)
         ensure_resource_is_active(resource)
         start_at, end_at = validate_time_range(start_at, end_at)

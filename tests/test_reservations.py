@@ -424,3 +424,79 @@ async def test_reject_changes_to_terminal_reservations(
 
     assert response.status_code == 409
     assert error_code(response) == "RESERVATION_NOT_EDITABLE"
+
+
+async def test_confirm_pending_reservation(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = base_time()
+    payload = reservation_data(
+        base_entities,
+        start_at,
+        start_at + timedelta(hours=1),
+    )
+    payload["status"] = "pending"
+    create_response = await client.post("/reservations", json=payload)
+    assert create_response.status_code == 201
+
+    response = await client.patch(
+        f"/reservations/{create_response.json()['id']}",
+        json={"status": "confirmed"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "confirmed"
+
+
+async def test_reject_confirmation_for_inactive_resource(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = base_time()
+    payload = reservation_data(
+        base_entities,
+        start_at,
+        start_at + timedelta(hours=1),
+    )
+    payload["status"] = "pending"
+    create_response = await client.post("/reservations", json=payload)
+    assert create_response.status_code == 201
+    await client.patch(
+        f"/resources/{base_entities['resource_id']}",
+        json={"is_active": False},
+    )
+
+    response = await client.patch(
+        f"/reservations/{create_response.json()['id']}",
+        json={"status": "confirmed"},
+    )
+
+    assert response.status_code == 409
+    assert error_code(response) == "RESOURCE_INACTIVE"
+
+
+async def test_reject_confirmation_after_reservation_starts(
+    client: AsyncClient,
+    base_entities: dict[str, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start_at = base_time()
+    payload = reservation_data(
+        base_entities,
+        start_at,
+        start_at + timedelta(hours=1),
+    )
+    payload["status"] = "pending"
+    create_response = await client.post("/reservations", json=payload)
+    assert create_response.status_code == 201
+    monkeypatch.setattr(
+        "app.services.reservation_service.utc_now",
+        lambda: start_at + timedelta(minutes=1),
+    )
+
+    response = await client.patch(
+        f"/reservations/{create_response.json()['id']}",
+        json={"status": "confirmed"},
+    )
+
+    assert response.status_code == 422
+    assert error_code(response) == "RESERVATION_IN_PAST"
