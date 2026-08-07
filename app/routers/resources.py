@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.exceptions import AppError
-from app.models.reservation import Reservation
+from app.models.reservation import Reservation, ReservationStatus
 from app.models.resource import Resource
 from app.schemas.reservation import AvailabilityRead
 from app.schemas.resource import ResourceCreate, ResourcePage, ResourceRead, ResourceUpdate
@@ -56,6 +57,45 @@ async def list_resources(
     return ResourcePage(items=items, page=page, limit=limit, total=total)
 
 
+@router.get("/available", response_model=ResourcePage)
+async def list_available_resources(
+    start_at: Annotated[datetime, Query()],
+    end_at: Annotated[datetime, Query()],
+    db: DbSession,
+    resource_type: str | None = None,
+    min_capacity: Annotated[int | None, Query(gt=0)] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ResourcePage:
+    start_at, end_at = validate_time_range(start_at, end_at)
+    has_conflict = (
+        select(Reservation.id)
+        .where(
+            Reservation.resource_id == Resource.id,
+            Reservation.status != ReservationStatus.CANCELLED,
+            Reservation.start_at < end_at,
+            Reservation.end_at > start_at,
+        )
+        .exists()
+    )
+    filters = [Resource.is_active.is_(True), ~has_conflict]
+    if resource_type is not None:
+        filters.append(Resource.resource_type == resource_type)
+    if min_capacity is not None:
+        filters.append(Resource.capacity >= min_capacity)
+
+    total = db.scalar(select(func.count(Resource.id)).where(*filters)) or 0
+    query = (
+        select(Resource)
+        .where(*filters)
+        .order_by(Resource.id)
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = list(db.scalars(query))
+    return ResourcePage(items=items, page=page, limit=limit, total=total)
+
+
 @router.get("/{resource_id}/availability", response_model=AvailabilityRead)
 async def check_availability(
     resource_id: int,
@@ -63,8 +103,6 @@ async def check_availability(
     end_at: Annotated[str, Query()],
     db: DbSession,
 ) -> AvailabilityRead:
-    from datetime import datetime
-
     try:
         parsed_start = datetime.fromisoformat(start_at)
         parsed_end = datetime.fromisoformat(end_at)

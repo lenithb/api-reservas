@@ -2,6 +2,12 @@
 
 Los cambios importantes del proyecto se documentan en este archivo. El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones siguen [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+### Agregado
+
+- Búsqueda paginada de recursos disponibles por horario, tipo y capacidad mínima.
+
 ## [0.2.0] - 2026-08-07
 
 ### Agregado
@@ -29,5 +35,6 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Cancelación de reservas y transiciones básicas de estado.
 - Migraciones con Alembic, datos de ejemplo y pruebas automatizadas.
 
+[Sin publicar]: https://github.com/lenithb/api-reservas/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/lenithb/api-reservas/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lenithb/api-reservas/releases/tag/v0.1.0

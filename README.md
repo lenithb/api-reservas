@@ -12,6 +12,7 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 - Crear y administrar clientes.
 - Registrar reservas con estados `pending`, `confirmed`, `cancelled` y `completed`.
 - Consultar si un recurso está disponible en un rango de fechas.
+- Buscar recursos disponibles por horario, tipo y capacidad mínima.
 - Evitar reservas superpuestas sobre el mismo recurso.
 - Cancelar una reserva sin borrarla de la base de datos.
 - Filtrar recursos, clientes y reservas.
@@ -172,12 +173,13 @@ Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas
 | -------- | --------------------------------------- | ----------------------------------------- |
 | `POST`   | `/resources`                            | Crear un recurso                          |
 | `GET`    | `/resources`                            | Listar recursos                           |
+| `GET`    | `/resources/available`                  | Buscar recursos disponibles               |
 | `GET`    | `/resources/{resource_id}`              | Consultar un recurso                      |
 | `PATCH`  | `/resources/{resource_id}`              | Modificar parte de un recurso             |
 | `DELETE` | `/resources/{resource_id}`              | Eliminar un recurso sin reservas          |
 | `GET`    | `/resources/{resource_id}/availability` | Consultar disponibilidad entre dos fechas |
 
-El listado se puede filtrar por `resource_type` e `is_active`.
+El listado se puede filtrar por `resource_type` e `is_active`. La búsqueda de recursos disponibles requiere `start_at` y `end_at`, y acepta los filtros opcionales `resource_type` y `min_capacity`; solamente devuelve recursos activos sin reservas superpuestas y usa la misma paginación que los demás listados.
 
 ### Clientes
 
