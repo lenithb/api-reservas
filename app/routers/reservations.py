@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import AppError
 from app.models.reservation import Reservation, ReservationStatus
 from app.schemas.reservation import (
     ReservationCreate,
@@ -42,6 +43,13 @@ async def list_reservations(
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ReservationPage:
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise AppError(
+            422,
+            "INVALID_FILTER_DATE_RANGE",
+            "La fecha inicial del filtro no puede ser posterior a la fecha final.",
+        )
+
     filters = []
     if resource_id is not None:
         filters.append(Reservation.resource_id == resource_id)
@@ -51,7 +59,7 @@ async def list_reservations(
         filters.append(Reservation.status == reservation_status)
     if start_date is not None:
         start_boundary = datetime.combine(start_date, time.min, timezone.utc)
-        filters.append(Reservation.start_at >= start_boundary)
+        filters.append(Reservation.end_at > start_boundary)
     if end_date is not None:
         end_boundary = datetime.combine(end_date + timedelta(days=1), time.min, timezone.utc)
         filters.append(Reservation.start_at < end_boundary)
