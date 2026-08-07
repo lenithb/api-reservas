@@ -4,6 +4,8 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 ## [Sin publicar]
 
+## [0.3.0] - 2026-08-07
+
 ### Agregado
 
 - Búsqueda paginada de recursos disponibles por horario, tipo y capacidad mínima.
@@ -37,6 +39,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Cancelación de reservas y transiciones básicas de estado.
 - Migraciones con Alembic, datos de ejemplo y pruebas automatizadas.
 
-[Sin publicar]: https://github.com/lenithb/api-reservas/compare/v0.2.0...HEAD
+[Sin publicar]: https://github.com/lenithb/api-reservas/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/lenithb/api-reservas/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/lenithb/api-reservas/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lenithb/api-reservas/releases/tag/v0.1.0

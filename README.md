@@ -1,6 +1,6 @@
 # API de reservas
 
-La versión actual es `v0.2.0`. Esta API REST permite manejar recursos, clientes y reservas, y sirve como punto de partida para distintos casos: una cancha, un consultorio, una sala, una habitación, un vehículo o cualquier otra cosa que se pueda reservar por horario.
+La versión actual es `v0.3.0`. Esta API REST permite manejar recursos, clientes y reservas, y sirve como punto de partida para distintos casos: una cancha, un consultorio, una sala, una habitación, un vehículo o cualquier otra cosa que se pueda reservar por horario.
 
 Es un proyecto solamente de backend. Por ahora busco resolver bien lo esencial: crear reservas, evitar cruces de horarios y permitir cancelaciones. Todavía no tiene autenticación ni componentes pensados para producción, así que queda bastante lugar para seguir practicando y mejorándolo.
 
@@ -297,4 +297,4 @@ Esta versión está pensada para aprender y seguir creciendo, no para usarla dir
 
 Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, agregar autenticación y sumar reglas como horarios de apertura o días no laborables. Más adelante también voy incorporar reservas recurrentes y notificaciones.
 
-Nada de eso forma parte de `v0.2.0`; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.
+Nada de eso forma parte de `v0.3.0`; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.
