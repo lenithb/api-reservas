@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import __version__
 from app.exceptions import AppError, app_error_handler
 from app.routers import customers, reservations, resources
 
 app = FastAPI(
     title="Reservation API",
-    version="0.1.0",
-    description="API REST básica para adinistrar recursos, clientes y reservas.",
+    version=__version__,
+    description="API REST básica para administrar recursos, clientes y reservas.",
 )
 
 app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]

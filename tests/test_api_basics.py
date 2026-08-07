@@ -11,6 +11,13 @@ async def test_health(client: AsyncClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+async def test_openapi_exposes_current_version(client: AsyncClient) -> None:
+    response = await client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == "0.2.0"
+
+
 async def test_duplicate_customer_email_is_rejected(client: AsyncClient) -> None:
     payload = {
         "full_name": "Primera Persona",
