@@ -14,6 +14,7 @@ from app.schemas.resource import ResourceCreate, ResourcePage, ResourceRead, Res
 from app.services.reservation_service import (
     ensure_resource_is_active,
     find_conflicts,
+    get_reservation_or_error,
     get_resource_or_error,
     validate_time_range,
 )
@@ -64,18 +65,25 @@ async def list_available_resources(
     db: DbSession,
     resource_type: str | None = None,
     min_capacity: Annotated[int | None, Query(gt=0)] = None,
+    exclude_reservation_id: Annotated[int | None, Query(gt=0)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ResourcePage:
     start_at, end_at = validate_time_range(start_at, end_at)
+    if exclude_reservation_id is not None:
+        get_reservation_or_error(db, exclude_reservation_id)
+
+    conflict_filters = [
+        Reservation.resource_id == Resource.id,
+        Reservation.status != ReservationStatus.CANCELLED,
+        Reservation.start_at < end_at,
+        Reservation.end_at > start_at,
+    ]
+    if exclude_reservation_id is not None:
+        conflict_filters.append(Reservation.id != exclude_reservation_id)
     has_conflict = (
         select(Reservation.id)
-        .where(
-            Reservation.resource_id == Resource.id,
-            Reservation.status != ReservationStatus.CANCELLED,
-            Reservation.start_at < end_at,
-            Reservation.end_at > start_at,
-        )
+        .where(*conflict_filters)
         .exists()
     )
     filters = [Resource.is_active.is_(True), ~has_conflict]
@@ -102,6 +110,7 @@ async def check_availability(
     start_at: Annotated[str, Query()],
     end_at: Annotated[str, Query()],
     db: DbSession,
+    exclude_reservation_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> AvailabilityRead:
     try:
         parsed_start = datetime.fromisoformat(start_at)
@@ -111,8 +120,16 @@ async def check_availability(
 
     resource = get_resource_or_error(db, resource_id)
     ensure_resource_is_active(resource)
+    if exclude_reservation_id is not None:
+        get_reservation_or_error(db, exclude_reservation_id)
     parsed_start, parsed_end = validate_time_range(parsed_start, parsed_end)
-    conflicts = find_conflicts(db, resource_id, parsed_start, parsed_end)
+    conflicts = find_conflicts(
+        db,
+        resource_id,
+        parsed_start,
+        parsed_end,
+        exclude_reservation_id=exclude_reservation_id,
+    )
     return AvailabilityRead(
         resource_id=resource_id,
         available=not conflicts,

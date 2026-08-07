@@ -108,3 +108,43 @@ async def test_cancelled_reservation_releases_resource_in_search(
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == base_entities["resource_id"]
+
+
+async def test_available_search_can_exclude_current_reservation(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = future_start()
+    end_at = start_at + timedelta(hours=1)
+    reservation_id = await reserve_base_resource(
+        client, base_entities, start_at, end_at
+    )
+
+    response = await client.get(
+        "/resources/available",
+        params={
+            "start_at": start_at.isoformat(),
+            "end_at": end_at.isoformat(),
+            "exclude_reservation_id": reservation_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == base_entities["resource_id"]
+
+
+async def test_available_search_rejects_unknown_excluded_reservation(
+    client: AsyncClient,
+) -> None:
+    start_at = future_start()
+    response = await client.get(
+        "/resources/available",
+        params={
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=1)).isoformat(),
+            "exclude_reservation_id": 9999,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "RESERVATION_NOT_FOUND"

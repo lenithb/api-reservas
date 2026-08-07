@@ -181,6 +181,8 @@ Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas
 
 El listado se puede filtrar por `resource_type` e `is_active`. La búsqueda de recursos disponibles requiere `start_at` y `end_at`, y acepta los filtros opcionales `resource_type` y `min_capacity`; solamente devuelve recursos activos sin reservas superpuestas y usa la misma paginación que los demás listados.
 
+Tanto `/resources/available` como `/resources/{resource_id}/availability` aceptan `exclude_reservation_id`. Este parámetro permite comprobar un cambio de horario o buscar alternativas sin que la reserva que se está editando se compare consigo misma.
+
 ### Clientes
 
 | Método   | Ruta                       | Para qué sirve                   |

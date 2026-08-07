@@ -310,6 +310,53 @@ async def test_availability_returns_conflicting_reservation(
     assert response.json()["conflicting_reservations"][0]["id"] == reservation["id"]
 
 
+async def test_availability_can_exclude_reservation_being_edited(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    reservation = await create_existing_reservation(client, base_entities)
+
+    self_check = await client.get(
+        f"/resources/{base_entities['resource_id']}/availability",
+        params={
+            "start_at": reservation["start_at"],
+            "end_at": reservation["end_at"],
+            "exclude_reservation_id": reservation["id"],
+        },
+    )
+
+    assert self_check.status_code == 200
+    assert self_check.json()["available"] is True
+    assert self_check.json()["conflicting_reservations"] == []
+
+    other_start = base_time() + timedelta(hours=2)
+    other_response = await client.post(
+        "/reservations",
+        json=reservation_data(
+            base_entities,
+            other_start,
+            other_start + timedelta(hours=1),
+        ),
+    )
+    assert other_response.status_code == 201
+    other_reservation_id = other_response.json()["id"]
+
+    other_check = await client.get(
+        f"/resources/{base_entities['resource_id']}/availability",
+        params={
+            "start_at": (other_start - timedelta(minutes=30)).isoformat(),
+            "end_at": (other_start + timedelta(minutes=30)).isoformat(),
+            "exclude_reservation_id": reservation["id"],
+        },
+    )
+
+    assert other_check.status_code == 200
+    assert other_check.json()["available"] is False
+    assert (
+        other_check.json()["conflicting_reservations"][0]["id"]
+        == other_reservation_id
+    )
+
+
 async def test_reject_completion_before_reservation_ends(
     client: AsyncClient, base_entities: dict[str, int]
 ) -> None:
