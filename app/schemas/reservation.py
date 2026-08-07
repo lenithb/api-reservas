@@ -74,3 +74,16 @@ class AvailabilityRead(BaseModel):
     resource_id: int
     available: bool
     conflicting_reservations: list[ConflictingReservation]
+
+
+class AvailabilityWindow(BaseModel):
+    start_at: datetime
+    end_at: datetime
+
+
+class AvailabilityWindowsRead(BaseModel):
+    resource_id: int
+    start_at: datetime
+    end_at: datetime
+    minimum_duration_minutes: int
+    windows: list[AvailabilityWindow]

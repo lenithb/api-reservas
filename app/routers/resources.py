@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -9,13 +9,19 @@ from app.database import get_db
 from app.exceptions import AppError
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.resource import Resource
-from app.schemas.reservation import AvailabilityRead
+from app.schemas.reservation import (
+    AvailabilityRead,
+    AvailabilityWindow,
+    AvailabilityWindowsRead,
+)
 from app.schemas.resource import ResourceCreate, ResourcePage, ResourceRead, ResourceUpdate
 from app.services.reservation_service import (
     ensure_resource_is_active,
+    find_available_windows,
     find_conflicts,
     get_reservation_or_error,
     get_resource_or_error,
+    validate_availability_search_range,
     validate_time_range,
 )
 
@@ -102,6 +108,40 @@ async def list_available_resources(
     )
     items = list(db.scalars(query))
     return ResourcePage(items=items, page=page, limit=limit, total=total)
+
+
+@router.get("/{resource_id}/available-windows", response_model=AvailabilityWindowsRead)
+async def list_available_windows(
+    resource_id: int,
+    start_at: Annotated[datetime, Query()],
+    end_at: Annotated[datetime, Query()],
+    db: DbSession,
+    minimum_duration_minutes: Annotated[int, Query(ge=30, le=480)] = 30,
+    exclude_reservation_id: Annotated[int | None, Query(gt=0)] = None,
+) -> AvailabilityWindowsRead:
+    resource = get_resource_or_error(db, resource_id)
+    ensure_resource_is_active(resource)
+    if exclude_reservation_id is not None:
+        get_reservation_or_error(db, exclude_reservation_id)
+    start_at, end_at = validate_availability_search_range(start_at, end_at)
+    windows = find_available_windows(
+        db,
+        resource_id,
+        start_at,
+        end_at,
+        minimum_duration=timedelta(minutes=minimum_duration_minutes),
+        exclude_reservation_id=exclude_reservation_id,
+    )
+    return AvailabilityWindowsRead(
+        resource_id=resource_id,
+        start_at=start_at,
+        end_at=end_at,
+        minimum_duration_minutes=minimum_duration_minutes,
+        windows=[
+            AvailabilityWindow(start_at=window_start, end_at=window_end)
+            for window_start, window_end in windows
+        ],
+    )
 
 
 @router.get("/{resource_id}/availability", response_model=AvailabilityRead)

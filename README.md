@@ -174,6 +174,7 @@ Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas
 | `POST`   | `/resources`                            | Crear un recurso                          |
 | `GET`    | `/resources`                            | Listar recursos                           |
 | `GET`    | `/resources/available`                  | Buscar recursos disponibles               |
+| `GET`    | `/resources/{resource_id}/available-windows` | Consultar ventanas libres            |
 | `GET`    | `/resources/{resource_id}`              | Consultar un recurso                      |
 | `PATCH`  | `/resources/{resource_id}`              | Modificar parte de un recurso             |
 | `DELETE` | `/resources/{resource_id}`              | Eliminar un recurso sin reservas          |
@@ -182,6 +183,8 @@ Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas
 El listado se puede filtrar por `resource_type` e `is_active`. La búsqueda de recursos disponibles requiere `start_at` y `end_at`, y acepta los filtros opcionales `resource_type` y `min_capacity`; solamente devuelve recursos activos sin reservas superpuestas y usa la misma paginación que los demás listados.
 
 Tanto `/resources/available` como `/resources/{resource_id}/availability` aceptan `exclude_reservation_id`. Este parámetro permite comprobar un cambio de horario o buscar alternativas sin que la reserva que se está editando se compare consigo misma.
+
+`/resources/{resource_id}/available-windows` devuelve los huecos continuos disponibles dentro de un rango de hasta siete días. `minimum_duration_minutes` permite descartar huecos demasiado cortos, con valores entre 30 y 480 minutos. También acepta `exclude_reservation_id`.
 
 ### Clientes
 

@@ -8,6 +8,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 - Búsqueda paginada de recursos disponibles por horario, tipo y capacidad mínima.
 - Consultas de disponibilidad que pueden excluir la reserva que se está editando.
+- Consulta de ventanas libres por recurso y duración mínima dentro de un rango de hasta siete días.
 
 ## [0.2.0] - 2026-08-07
 

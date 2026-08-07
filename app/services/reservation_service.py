@@ -12,6 +12,7 @@ from app.schemas.reservation import ReservationCreate, ReservationUpdate
 
 MINIMUM_DURATION = timedelta(minutes=30)
 MAXIMUM_DURATION = timedelta(hours=8)
+MAXIMUM_AVAILABILITY_SEARCH = timedelta(days=7)
 
 
 def normalize_datetime(value: datetime) -> datetime:
@@ -53,6 +54,33 @@ def validate_time_range(start_at: datetime, end_at: datetime) -> tuple[datetime,
             422,
             "RESERVATION_TOO_LONG",
             "La duración máxima de una reserva es de 8 horas.",
+        )
+    return start_at, end_at
+
+
+def validate_availability_search_range(
+    start_at: datetime, end_at: datetime
+) -> tuple[datetime, datetime]:
+    start_at = normalize_datetime(start_at)
+    end_at = normalize_datetime(end_at)
+
+    if start_at >= end_at:
+        raise AppError(
+            422,
+            "INVALID_DATE_RANGE",
+            "La fecha de inicio debe ser anterior a la fecha de finalización.",
+        )
+    if start_at < utc_now():
+        raise AppError(
+            422,
+            "AVAILABILITY_IN_PAST",
+            "No se pueden buscar ventanas de disponibilidad en el pasado.",
+        )
+    if end_at - start_at > MAXIMUM_AVAILABILITY_SEARCH:
+        raise AppError(
+            422,
+            "AVAILABILITY_RANGE_TOO_LONG",
+            "La búsqueda de disponibilidad no puede superar los 7 días.",
         )
     return start_at, end_at
 
@@ -121,6 +149,38 @@ def find_conflicts(
             )
         )
     )
+
+
+def find_available_windows(
+    db: Session,
+    resource_id: int,
+    start_at: datetime,
+    end_at: datetime,
+    minimum_duration: timedelta,
+    exclude_reservation_id: int | None = None,
+) -> list[tuple[datetime, datetime]]:
+    conflicts = find_conflicts(
+        db,
+        resource_id,
+        start_at,
+        end_at,
+        exclude_reservation_id,
+    )
+    windows: list[tuple[datetime, datetime]] = []
+    cursor = start_at
+
+    for conflict in conflicts:
+        gap_is_long_enough = conflict.start_at - cursor >= minimum_duration
+        if conflict.start_at > cursor and gap_is_long_enough:
+            windows.append((cursor, min(conflict.start_at, end_at)))
+        if conflict.end_at > cursor:
+            cursor = conflict.end_at
+        if cursor >= end_at:
+            break
+
+    if end_at - cursor >= minimum_duration:
+        windows.append((cursor, end_at))
+    return windows
 
 
 def ensure_availability(
