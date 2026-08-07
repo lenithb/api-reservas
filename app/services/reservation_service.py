@@ -186,6 +186,19 @@ ALLOWED_TRANSITIONS: dict[ReservationStatus, set[ReservationStatus]] = {
     ReservationStatus.CANCELLED: set(),
     ReservationStatus.COMPLETED: set(),
 }
+TERMINAL_STATUSES = {
+    ReservationStatus.CANCELLED,
+    ReservationStatus.COMPLETED,
+}
+
+
+def ensure_reservation_is_editable(reservation: Reservation) -> None:
+    if reservation.status in TERMINAL_STATUSES:
+        raise AppError(
+            409,
+            "RESERVATION_NOT_EDITABLE",
+            "No se puede modificar una reserva cancelada o completada.",
+        )
 
 
 def validate_status_transition(
@@ -208,17 +221,8 @@ def update_reservation(
     if not changes:
         return reservation
 
+    ensure_reservation_is_editable(reservation)
     requested_status = changes.get("status", reservation.status)
-    if (
-        "status" in changes
-        and reservation.status == ReservationStatus.CANCELLED
-        and requested_status == ReservationStatus.CANCELLED
-    ):
-        raise AppError(
-            409,
-            "RESERVATION_ALREADY_CANCELLED",
-            "La reserva ya se encuentra cancelada.",
-        )
     validate_status_transition(reservation.status, requested_status)
 
     resource_id = changes.get("resource_id", reservation.resource_id)
@@ -242,6 +246,13 @@ def update_reservation(
             start_at,
             end_at,
             exclude_reservation_id=reservation.id,
+        )
+
+    if requested_status == ReservationStatus.COMPLETED and end_at > utc_now():
+        raise AppError(
+            409,
+            "RESERVATION_NOT_FINISHED",
+            "No se puede completar una reserva antes de su fecha de finalización.",
         )
 
     for field, value in changes.items():

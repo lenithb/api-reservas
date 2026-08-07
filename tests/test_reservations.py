@@ -308,3 +308,72 @@ async def test_availability_returns_conflicting_reservation(
     assert response.status_code == 200
     assert response.json()["available"] is False
     assert response.json()["conflicting_reservations"][0]["id"] == reservation["id"]
+
+
+async def test_reject_completion_before_reservation_ends(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    reservation = await create_existing_reservation(client, base_entities)
+
+    response = await client.patch(
+        f"/reservations/{reservation['id']}",
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 409
+    assert error_code(response) == "RESERVATION_NOT_FINISHED"
+
+
+async def test_complete_finished_reservation(
+    client: AsyncClient,
+    base_entities: dict[str, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reservation = await create_existing_reservation(client, base_entities)
+    end_at = datetime.fromisoformat(str(reservation["end_at"]).replace("Z", "+00:00"))
+    monkeypatch.setattr(
+        "app.services.reservation_service.utc_now",
+        lambda: end_at + timedelta(minutes=1),
+    )
+
+    response = await client.patch(
+        f"/reservations/{reservation['id']}",
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+
+@pytest.mark.parametrize("terminal_status", ["cancelled", "completed"])
+async def test_reject_changes_to_terminal_reservations(
+    client: AsyncClient,
+    base_entities: dict[str, int],
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_status: str,
+) -> None:
+    reservation = await create_existing_reservation(client, base_entities)
+    reservation_id = reservation["id"]
+    if terminal_status == "cancelled":
+        terminal_response = await client.post(f"/reservations/{reservation_id}/cancel")
+    else:
+        end_at = datetime.fromisoformat(
+            str(reservation["end_at"]).replace("Z", "+00:00")
+        )
+        monkeypatch.setattr(
+            "app.services.reservation_service.utc_now",
+            lambda: end_at + timedelta(minutes=1),
+        )
+        terminal_response = await client.patch(
+            f"/reservations/{reservation_id}",
+            json={"status": "completed"},
+        )
+    assert terminal_response.status_code == 200
+
+    response = await client.patch(
+        f"/reservations/{reservation_id}",
+        json={"notes": "Este cambio no debe aplicarse"},
+    )
+
+    assert response.status_code == 409
+    assert error_code(response) == "RESERVATION_NOT_EDITABLE"

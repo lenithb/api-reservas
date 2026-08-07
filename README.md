@@ -252,7 +252,9 @@ cancelled -> estado final
 completed -> estado final
 ```
 
-Una reserva nueva puede comenzar como `pending` o `confirmed`. Las reservas no tienen un endpoint de eliminación: se cancelan. Los recursos y clientes sí se pueden eliminar, siempre que no tengan ninguna reserva asociada.
+Una reserva nueva puede comenzar como `pending` o `confirmed`. Una reserva confirmada sólo puede marcarse como `completed` después de su fecha de finalización. Las reservas canceladas o completadas son registros finales y ya no se pueden modificar.
+
+Las reservas no tienen un endpoint de eliminación: se cancelan. Los recursos y clientes sí se pueden eliminar, siempre que no tengan ninguna reserva asociada.
 
 ## Respuestas de error
 
