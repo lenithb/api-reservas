@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from app.database import get_db
 from app.exceptions import AppError
 from app.models.customer import Customer
 from app.models.reservation import Reservation
-from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
+from app.schemas.customer import CustomerCreate, CustomerPage, CustomerRead, CustomerUpdate
 from app.services.reservation_service import get_customer_or_error
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -49,15 +49,30 @@ async def create_customer(payload: CustomerCreate, db: DbSession) -> Customer:
     return customer
 
 
-@router.get("", response_model=list[CustomerRead])
-async def list_customers(db: DbSession, search: str | None = None) -> list[Customer]:
-    query = select(Customer)
+@router.get("", response_model=CustomerPage)
+async def list_customers(
+    db: DbSession,
+    search: str | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> CustomerPage:
+    filters = []
     if search:
         pattern = f"%{search.strip()}%"
-        query = query.where(
+        filters.append(
             or_(Customer.full_name.ilike(pattern), Customer.email.ilike(pattern))
         )
-    return list(db.scalars(query.order_by(Customer.id)))
+
+    total = db.scalar(select(func.count(Customer.id)).where(*filters)) or 0
+    query = (
+        select(Customer)
+        .where(*filters)
+        .order_by(Customer.id)
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = list(db.scalars(query))
+    return CustomerPage(items=items, page=page, limit=limit, total=total)
 
 
 @router.get("/{customer_id}", response_model=CustomerRead)

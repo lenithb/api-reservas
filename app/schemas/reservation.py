@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 from app.models.reservation import ReservationStatus
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, Page
 
 
 def require_timezone(value: datetime) -> datetime:
@@ -60,11 +60,8 @@ class ReservationRead(ORMModel):
     cancelled_at: datetime | None
 
 
-class ReservationPage(BaseModel):
-    items: list[ReservationRead]
-    page: int
-    limit: int
-    total: int
+class ReservationPage(Page[ReservationRead]):
+    pass
 
 
 class ConflictingReservation(ORMModel):

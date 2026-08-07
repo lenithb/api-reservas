@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, EmailStr, StringConstraints, field_validator
 
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, Page
 
 FullName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)
@@ -36,3 +36,7 @@ class CustomerRead(ORMModel):
     phone: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class CustomerPage(Page[CustomerRead]):
+    pass

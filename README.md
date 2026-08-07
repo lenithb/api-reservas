@@ -13,7 +13,7 @@ Es un proyecto solamente de backend. Por ahora busco resolver bien lo esencial: 
 - Evitar reservas superpuestas sobre el mismo recurso.
 - Cancelar una reserva sin borrarla de la base de datos.
 - Filtrar recursos, clientes y reservas.
-- Paginar el listado de reservas.
+- Paginar los listados de recursos, clientes y reservas.
 
 ## Tecnologías
 
@@ -198,7 +198,9 @@ El parámetro `search` permite buscar coincidencias en el nombre o en el email.
 | `PATCH` | `/reservations/{reservation_id}`        | Modificar una reserva |
 | `POST`  | `/reservations/{reservation_id}/cancel` | Cancelar una reserva  |
 
-El listado acepta los filtros `resource_id`, `customer_id`, `status`, `start_date` y `end_date`. También usa `page` y `limit` para la paginación; el límite máximo es de 100 resultados por página.
+El listado acepta los filtros `resource_id`, `customer_id`, `status`, `start_date` y `end_date`.
+
+Los tres listados usan `page` y `limit` para la paginación; el límite máximo es de 100 resultados por página. Los filtros se aplican antes de paginar y `total` indica la cantidad total de coincidencias.
 
 Una respuesta paginada tiene este formato:
 

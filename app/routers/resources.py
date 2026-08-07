@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,7 +9,7 @@ from app.exceptions import AppError
 from app.models.reservation import Reservation
 from app.models.resource import Resource
 from app.schemas.reservation import AvailabilityRead
-from app.schemas.resource import ResourceCreate, ResourceRead, ResourceUpdate
+from app.schemas.resource import ResourceCreate, ResourcePage, ResourceRead, ResourceUpdate
 from app.services.reservation_service import (
     ensure_resource_is_active,
     find_conflicts,
@@ -30,18 +30,30 @@ async def create_resource(payload: ResourceCreate, db: DbSession) -> Resource:
     return resource
 
 
-@router.get("", response_model=list[ResourceRead])
+@router.get("", response_model=ResourcePage)
 async def list_resources(
     db: DbSession,
     resource_type: str | None = None,
     is_active: bool | None = None,
-) -> list[Resource]:
-    query = select(Resource)
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ResourcePage:
+    filters = []
     if resource_type is not None:
-        query = query.where(Resource.resource_type == resource_type)
+        filters.append(Resource.resource_type == resource_type)
     if is_active is not None:
-        query = query.where(Resource.is_active == is_active)
-    return list(db.scalars(query.order_by(Resource.id)))
+        filters.append(Resource.is_active == is_active)
+
+    total = db.scalar(select(func.count(Resource.id)).where(*filters)) or 0
+    query = (
+        select(Resource)
+        .where(*filters)
+        .order_by(Resource.id)
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = list(db.scalars(query))
+    return ResourcePage(items=items, page=page, limit=limit, total=total)
 
 
 @router.get("/{resource_id}/availability", response_model=AvailabilityRead)

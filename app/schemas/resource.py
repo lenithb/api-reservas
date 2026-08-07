@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, Page
 
 RequiredName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
@@ -45,3 +45,7 @@ class ResourceRead(ORMModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ResourcePage(Page[ResourceRead]):
+    pass
