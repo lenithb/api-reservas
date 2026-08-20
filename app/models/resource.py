@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UTCDateTime, utc_now
@@ -19,6 +19,8 @@ class Resource(Base):
     resource_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    opening_time: Mapped[time | None] = mapped_column(Time)
+    closing_time: Mapped[time | None] = mapped_column(Time)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utc_now, nullable=False
     )

@@ -4,6 +4,10 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 ## [Sin publicar]
 
+### Agregado
+
+- Horarios diarios de apertura opcionales por recurso, aplicados al crear o mover reservas y al consultar disponibilidad.
+
 ## [0.3.1] - 2026-08-07
 
 ### Corregido

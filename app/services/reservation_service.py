@@ -115,6 +115,54 @@ def ensure_resource_is_active(resource: Resource) -> None:
         )
 
 
+def is_within_opening_hours(
+    resource: Resource, start_at: datetime, end_at: datetime
+) -> bool:
+    if resource.opening_time is None and resource.closing_time is None:
+        return True
+
+    if resource.opening_time is None or resource.closing_time is None:
+        return False
+    if start_at.date() != end_at.date():
+        return False
+
+    opening_at = datetime.combine(start_at.date(), resource.opening_time, timezone.utc)
+    closing_at = datetime.combine(start_at.date(), resource.closing_time, timezone.utc)
+    return opening_at <= start_at and end_at <= closing_at
+
+
+def ensure_within_opening_hours(
+    resource: Resource, start_at: datetime, end_at: datetime
+) -> None:
+    if not is_within_opening_hours(resource, start_at, end_at):
+        raise AppError(
+            409,
+            "OUTSIDE_OPENING_HOURS",
+            "La reserva debe estar dentro del horario de apertura del recurso.",
+        )
+
+
+def opening_windows(
+    resource: Resource, start_at: datetime, end_at: datetime
+) -> list[tuple[datetime, datetime]]:
+    if resource.opening_time is None and resource.closing_time is None:
+        return [(start_at, end_at)]
+    if resource.opening_time is None or resource.closing_time is None:
+        return []
+
+    windows: list[tuple[datetime, datetime]] = []
+    current_day = start_at.date()
+    while current_day <= end_at.date():
+        opening_at = datetime.combine(current_day, resource.opening_time, timezone.utc)
+        closing_at = datetime.combine(current_day, resource.closing_time, timezone.utc)
+        window_start = max(start_at, opening_at)
+        window_end = min(end_at, closing_at)
+        if window_start < window_end:
+            windows.append((window_start, window_end))
+        current_day += timedelta(days=1)
+    return windows
+
+
 def conflict_query(
     resource_id: int,
     start_at: datetime,
@@ -218,6 +266,7 @@ def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
         )
 
     start_at, end_at = validate_time_range(payload.start_at, payload.end_at)
+    ensure_within_opening_hours(resource, start_at, end_at)
     ensure_availability(db, payload.resource_id, start_at, end_at)
 
     reservation = Reservation(
@@ -304,6 +353,7 @@ def update_reservation(
         resource = get_resource_or_error(db, resource_id)
         ensure_resource_is_active(resource)
         start_at, end_at = validate_time_range(start_at, end_at)
+        ensure_within_opening_hours(resource, start_at, end_at)
         ensure_availability(
             db,
             resource_id,

@@ -21,6 +21,8 @@ from app.services.reservation_service import (
     find_conflicts,
     get_reservation_or_error,
     get_resource_or_error,
+    is_within_opening_hours,
+    opening_windows,
     validate_availability_search_range,
     validate_time_range,
 )
@@ -98,15 +100,16 @@ async def list_available_resources(
     if min_capacity is not None:
         filters.append(Resource.capacity >= min_capacity)
 
-    total = db.scalar(select(func.count(Resource.id)).where(*filters)) or 0
-    query = (
-        select(Resource)
-        .where(*filters)
-        .order_by(Resource.id)
-        .offset((page - 1) * limit)
-        .limit(limit)
+    candidates = list(
+        db.scalars(select(Resource).where(*filters).order_by(Resource.id))
     )
-    items = list(db.scalars(query))
+    available_resources = [
+        resource
+        for resource in candidates
+        if is_within_opening_hours(resource, start_at, end_at)
+    ]
+    total = len(available_resources)
+    items = available_resources[(page - 1) * limit : page * limit]
     return ResourcePage(items=items, page=page, limit=limit, total=total)
 
 
@@ -124,14 +127,18 @@ async def list_available_windows(
     if exclude_reservation_id is not None:
         get_reservation_or_error(db, exclude_reservation_id)
     start_at, end_at = validate_availability_search_range(start_at, end_at)
-    windows = find_available_windows(
-        db,
-        resource_id,
-        start_at,
-        end_at,
-        minimum_duration=timedelta(minutes=minimum_duration_minutes),
-        exclude_reservation_id=exclude_reservation_id,
-    )
+    windows = [
+        available_window
+        for opening_start, opening_end in opening_windows(resource, start_at, end_at)
+        for available_window in find_available_windows(
+            db,
+            resource_id,
+            opening_start,
+            opening_end,
+            minimum_duration=timedelta(minutes=minimum_duration_minutes),
+            exclude_reservation_id=exclude_reservation_id,
+        )
+    ]
     return AvailabilityWindowsRead(
         resource_id=resource_id,
         start_at=start_at,
@@ -172,7 +179,10 @@ async def check_availability(
     )
     return AvailabilityRead(
         resource_id=resource_id,
-        available=not conflicts,
+        available=(
+            is_within_opening_hours(resource, parsed_start, parsed_end)
+            and not conflicts
+        ),
         conflicting_reservations=conflicts,
     )
 
@@ -187,7 +197,27 @@ async def update_resource(
     resource_id: int, payload: ResourceUpdate, db: DbSession
 ) -> Resource:
     resource = get_resource_or_error(db, resource_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    opening_time = changes.get("opening_time", resource.opening_time)
+    closing_time = changes.get("closing_time", resource.closing_time)
+    if (opening_time is None) != (closing_time is None):
+        raise AppError(
+            422,
+            "INVALID_OPENING_HOURS",
+            "La hora de apertura y cierre deben configurarse juntas.",
+        )
+    if (
+        opening_time is not None
+        and closing_time is not None
+        and opening_time >= closing_time
+    ):
+        raise AppError(
+            422,
+            "INVALID_OPENING_HOURS",
+            "La hora de cierre debe ser posterior a la de apertura.",
+        )
+
+    for field, value in changes.items():
         setattr(resource, field, value)
     db.commit()
     db.refresh(resource)

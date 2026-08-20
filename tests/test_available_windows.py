@@ -119,3 +119,63 @@ async def test_available_windows_reject_ranges_over_seven_days(
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "AVAILABILITY_RANGE_TOO_LONG"
+
+
+async def test_opening_hours_limit_reservations_and_available_windows(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    resource_id = base_entities["resource_id"]
+    update_response = await client.patch(
+        f"/resources/{resource_id}",
+        json={"opening_time": "09:00:00", "closing_time": "17:00:00"},
+    )
+    assert update_response.status_code == 200
+
+    start_at = search_start()
+    before_opening_response = await client.post(
+        "/reservations",
+        json={
+            "resource_id": resource_id,
+            "customer_id": base_entities["customer_id"],
+            "start_at": start_at.replace(hour=8).isoformat(),
+            "end_at": start_at.replace(hour=9).isoformat(),
+        },
+    )
+    windows_response = await client.get(
+        f"/resources/{resource_id}/available-windows",
+        params={
+            "start_at": start_at.replace(hour=8).isoformat(),
+            "end_at": start_at.replace(hour=18).isoformat(),
+        },
+    )
+
+    assert before_opening_response.status_code == 409
+    assert before_opening_response.json()["detail"]["code"] == "OUTSIDE_OPENING_HOURS"
+    assert windows_response.status_code == 200
+    assert [
+        (parsed(window["start_at"]), parsed(window["end_at"]))
+        for window in windows_response.json()["windows"]
+    ] == [(start_at, start_at.replace(hour=17))]
+
+
+async def test_available_resources_excludes_resources_outside_opening_hours(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    resource_id = base_entities["resource_id"]
+    update_response = await client.patch(
+        f"/resources/{resource_id}",
+        json={"opening_time": "09:00:00", "closing_time": "17:00:00"},
+    )
+    assert update_response.status_code == 200
+
+    start_at = search_start().replace(hour=18)
+    response = await client.get(
+        "/resources/available",
+        params={
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=1)).isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert all(item["id"] != resource_id for item in response.json()["items"])
