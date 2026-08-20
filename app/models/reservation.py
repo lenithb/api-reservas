@@ -47,6 +47,7 @@ class Reservation(Base):
         nullable=False,
         index=True,
     )
+    series_id: Mapped[str | None] = mapped_column(String(36), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utc_now, nullable=False

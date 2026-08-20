@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.reservation import ReservationStatus
 from app.schemas.common import ORMModel, Page
@@ -22,6 +22,11 @@ class ReservationCreate(BaseModel):
 
     _validate_start_at = field_validator("start_at")(require_timezone)
     _validate_end_at = field_validator("end_at")(require_timezone)
+
+
+class RecurringReservationCreate(ReservationCreate):
+    occurrences: int = Field(ge=2, le=52)
+    interval_weeks: int = Field(default=1, ge=1, le=52)
 
 
 class ReservationUpdate(BaseModel):
@@ -54,6 +59,7 @@ class ReservationRead(ORMModel):
     start_at: datetime
     end_at: datetime
     status: ReservationStatus
+    series_id: str | None
     notes: str | None
     created_at: datetime
     updated_at: datetime

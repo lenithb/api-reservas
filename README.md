@@ -15,6 +15,7 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 - Buscar recursos disponibles por horario, tipo y capacidad mínima.
 - Configurar un horario diario de apertura para cada recurso.
 - Marcar fechas puntuales en las que un recurso no está disponible.
+- Crear series de reservas recurrentes semanales.
 - Evitar reservas superpuestas sobre el mismo recurso.
 - Cancelar una reserva sin borrarla de la base de datos.
 - Filtrar recursos, clientes y reservas.
@@ -209,6 +210,7 @@ El parámetro `search` permite buscar coincidencias en el nombre o en el email.
 | Método  | Ruta                                    | Para qué sirve        |
 | ------- | --------------------------------------- | --------------------- |
 | `POST`  | `/reservations`                         | Crear una reserva     |
+| `POST`  | `/reservations/recurring`               | Crear una serie semanal |
 | `GET`   | `/reservations`                         | Listar reservas       |
 | `GET`   | `/reservations/{reservation_id}`        | Consultar una reserva |
 | `PATCH` | `/reservations/{reservation_id}`        | Modificar una reserva |
@@ -217,6 +219,8 @@ El parámetro `search` permite buscar coincidencias en el nombre o en el email.
 El listado acepta los filtros `resource_id`, `customer_id`, `status`, `start_date` y `end_date`. Las fechas se interpretan como días UTC y devuelven todas las reservas que se superponen con el rango, incluidas las que comienzan antes o terminan después. Si se envían ambas fechas, `start_date` no puede ser posterior a `end_date`.
 
 Los tres listados usan `page` y `limit` para la paginación; el límite máximo es de 100 resultados por página. Los filtros se aplican antes de paginar y `total` indica la cantidad total de coincidencias.
+
+`POST /reservations/recurring` recibe los mismos datos que una reserva normal, más `occurrences` (entre 2 y 52) e `interval_weeks` (por defecto, 1). La API valida toda la serie antes de crearla: si una ocurrencia no cumple las reglas de horario, cierre o disponibilidad, no se guarda ninguna. Cada reserva de la serie devuelve el mismo `series_id`.
 
 Una respuesta paginada tiene este formato:
 
@@ -295,7 +299,7 @@ Esta versión está pensada para aprender y seguir creciendo, no para usarla dir
 - La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
 - Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
 - No hay login, usuarios, roles ni permisos.
-- No hay reservas recurrentes.
+- Las series recurrentes son semanales y no incluyen por ahora edición o cancelación conjunta.
 - Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
 - El proyecto no incluye frontend, Docker ni configuración de despliegue.
 

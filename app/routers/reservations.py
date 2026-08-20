@@ -13,10 +13,12 @@ from app.schemas.reservation import (
     ReservationPage,
     ReservationRead,
     ReservationUpdate,
+    RecurringReservationCreate,
 )
 from app.services.reservation_service import (
     cancel_reservation,
     create_reservation,
+    create_recurring_reservations,
     get_reservation_or_error,
     update_reservation,
 )
@@ -28,6 +30,17 @@ DbSession = Annotated[Session, Depends(get_db)]
 @router.post("", response_model=ReservationRead, status_code=status.HTTP_201_CREATED)
 async def create(payload: ReservationCreate, db: DbSession) -> Reservation:
     return create_reservation(db, payload)
+
+
+@router.post(
+    "/recurring",
+    response_model=list[ReservationRead],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_recurring(
+    payload: RecurringReservationCreate, db: DbSession
+) -> list[Reservation]:
+    return create_recurring_reservations(db, payload)
 
 
 @router.get("", response_model=ReservationPage)

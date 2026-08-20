@@ -8,6 +8,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 - Horarios diarios de apertura opcionales por recurso, aplicados al crear o mover reservas y al consultar disponibilidad.
 - Fechas de cierre puntuales por recurso, aplicadas a reservas y consultas de disponibilidad.
+- Creación atómica de series de reservas recurrentes semanales, con hasta 52 ocurrencias.
 
 ## [0.3.1] - 2026-08-07
 

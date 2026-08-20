@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
@@ -8,7 +9,11 @@ from app.exceptions import AppError
 from app.models.customer import Customer
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.resource import Resource
-from app.schemas.reservation import ReservationCreate, ReservationUpdate
+from app.schemas.reservation import (
+    RecurringReservationCreate,
+    ReservationCreate,
+    ReservationUpdate,
+)
 
 MINIMUM_DURATION = timedelta(minutes=30)
 MAXIMUM_DURATION = timedelta(hours=8)
@@ -314,6 +319,50 @@ def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
     db.commit()
     db.refresh(reservation)
     return reservation
+
+
+def create_recurring_reservations(
+    db: Session, payload: RecurringReservationCreate
+) -> list[Reservation]:
+    resource = get_resource_or_error(db, payload.resource_id)
+    get_customer_or_error(db, payload.customer_id)
+    ensure_resource_is_active(resource)
+
+    if payload.status not in {ReservationStatus.PENDING, ReservationStatus.CONFIRMED}:
+        raise AppError(
+            409,
+            "INVALID_STATUS_TRANSITION",
+            "Una reserva nueva solo puede estar pendiente o confirmada.",
+        )
+
+    start_at, end_at = validate_time_range(payload.start_at, payload.end_at)
+    interval = timedelta(weeks=payload.interval_weeks)
+    schedule = [
+        (start_at + interval * occurrence, end_at + interval * occurrence)
+        for occurrence in range(payload.occurrences)
+    ]
+    for occurrence_start, occurrence_end in schedule:
+        ensure_within_opening_hours(resource, occurrence_start, occurrence_end)
+        ensure_availability(db, payload.resource_id, occurrence_start, occurrence_end)
+
+    series_id = str(uuid4())
+    reservations = [
+        Reservation(
+            resource_id=payload.resource_id,
+            customer_id=payload.customer_id,
+            start_at=occurrence_start,
+            end_at=occurrence_end,
+            status=payload.status,
+            notes=payload.notes,
+            series_id=series_id,
+        )
+        for occurrence_start, occurrence_end in schedule
+    ]
+    db.add_all(reservations)
+    db.commit()
+    for reservation in reservations:
+        db.refresh(reservation)
+    return reservations
 
 
 ALLOWED_TRANSITIONS: dict[ReservationStatus, set[ReservationStatus]] = {

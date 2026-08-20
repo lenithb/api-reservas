@@ -59,6 +59,56 @@ async def test_create_valid_reservation(
     assert response.json()["start_at"].endswith("Z")
 
 
+async def test_create_weekly_recurring_reservations(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = base_time()
+    response = await client.post(
+        "/reservations/recurring",
+        json={
+            **reservation_data(base_entities, start_at, start_at + timedelta(hours=1)),
+            "occurrences": 3,
+            "interval_weeks": 1,
+        },
+    )
+
+    assert response.status_code == 201
+    reservations = response.json()
+    assert len(reservations) == 3
+    assert len({reservation["series_id"] for reservation in reservations}) == 1
+    assert all(reservation["series_id"] is not None for reservation in reservations)
+    assert [
+        datetime.fromisoformat(reservation["start_at"].replace("Z", "+00:00"))
+        for reservation in reservations
+    ] == [start_at + timedelta(weeks=week) for week in range(3)]
+
+
+async def test_recurring_reservations_are_atomic_when_an_occurrence_is_unavailable(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = base_time()
+    closed_date = (start_at + timedelta(weeks=1)).date().isoformat()
+    update_response = await client.patch(
+        f"/resources/{base_entities['resource_id']}",
+        json={"closed_dates": [closed_date]},
+    )
+    assert update_response.status_code == 200
+
+    response = await client.post(
+        "/reservations/recurring",
+        json={
+            **reservation_data(base_entities, start_at, start_at + timedelta(hours=1)),
+            "occurrences": 2,
+        },
+    )
+    list_response = await client.get("/reservations")
+
+    assert response.status_code == 409
+    assert error_code(response) == "RESOURCE_CLOSED"
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 0
+
+
 async def test_reject_end_before_start(
     client: AsyncClient, base_entities: dict[str, int]
 ) -> None:
