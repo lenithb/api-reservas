@@ -118,6 +118,14 @@ def ensure_resource_is_active(resource: Resource) -> None:
 def is_within_opening_hours(
     resource: Resource, start_at: datetime, end_at: datetime
 ) -> bool:
+    closed_dates = set(resource.closed_dates)
+    current_day = start_at.date()
+    last_day = (end_at - timedelta(microseconds=1)).date()
+    while current_day <= last_day:
+        if current_day.isoformat() in closed_dates:
+            return False
+        current_day += timedelta(days=1)
+
     if resource.opening_time is None and resource.closing_time is None:
         return True
 
@@ -134,6 +142,18 @@ def is_within_opening_hours(
 def ensure_within_opening_hours(
     resource: Resource, start_at: datetime, end_at: datetime
 ) -> None:
+    closed_dates = set(resource.closed_dates)
+    current_day = start_at.date()
+    last_day = (end_at - timedelta(microseconds=1)).date()
+    while current_day <= last_day:
+        if current_day.isoformat() in closed_dates:
+            raise AppError(
+                409,
+                "RESOURCE_CLOSED",
+                "El recurso no está disponible en una de las fechas solicitadas.",
+            )
+        current_day += timedelta(days=1)
+
     if not is_within_opening_hours(resource, start_at, end_at):
         raise AppError(
             409,
@@ -145,16 +165,29 @@ def ensure_within_opening_hours(
 def opening_windows(
     resource: Resource, start_at: datetime, end_at: datetime
 ) -> list[tuple[datetime, datetime]]:
-    if resource.opening_time is None and resource.closing_time is None:
+    if (
+        resource.opening_time is None
+        and resource.closing_time is None
+        and not resource.closed_dates
+    ):
         return [(start_at, end_at)]
-    if resource.opening_time is None or resource.closing_time is None:
+    if (resource.opening_time is None) != (resource.closing_time is None):
         return []
 
     windows: list[tuple[datetime, datetime]] = []
     current_day = start_at.date()
     while current_day <= end_at.date():
-        opening_at = datetime.combine(current_day, resource.opening_time, timezone.utc)
-        closing_at = datetime.combine(current_day, resource.closing_time, timezone.utc)
+        if current_day.isoformat() in resource.closed_dates:
+            current_day += timedelta(days=1)
+            continue
+        opening_at = datetime.combine(
+            current_day, resource.opening_time or datetime.min.time(), timezone.utc
+        )
+        closing_at = datetime.combine(
+            current_day + timedelta(days=1), datetime.min.time(), timezone.utc
+        )
+        if resource.closing_time is not None:
+            closing_at = datetime.combine(current_day, resource.closing_time, timezone.utc)
         window_start = max(start_at, opening_at)
         window_end = min(end_at, closing_at)
         if window_start < window_end:

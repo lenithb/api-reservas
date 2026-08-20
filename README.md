@@ -14,6 +14,7 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 - Consultar si un recurso está disponible en un rango de fechas.
 - Buscar recursos disponibles por horario, tipo y capacidad mínima.
 - Configurar un horario diario de apertura para cada recurso.
+- Marcar fechas puntuales en las que un recurso no está disponible.
 - Evitar reservas superpuestas sobre el mismo recurso.
 - Cancelar una reserva sin borrarla de la base de datos.
 - Filtrar recursos, clientes y reservas.
@@ -185,6 +186,8 @@ El listado se puede filtrar por `resource_type` e `is_active`. La búsqueda de r
 
 Al crear o editar un recurso se pueden enviar `opening_time` y `closing_time` en formato `HH:MM:SS`. Deben enviarse juntas, usan UTC y definen una ventana diaria; las reservas y las consultas de disponibilidad deben quedar completamente dentro de ella. Si no se configuran, el recurso puede reservarse a cualquier hora. Esta primera versión no admite horarios que crucen la medianoche.
 
+El campo `closed_dates` acepta una lista de fechas UTC con formato `YYYY-MM-DD`. Durante una fecha cerrada no se pueden crear o mover reservas, el recurso no aparece en las búsquedas de ese día y no se devuelven ventanas disponibles.
+
 Tanto `/resources/available` como `/resources/{resource_id}/availability` aceptan `exclude_reservation_id`. Este parámetro permite comprobar un cambio de horario o buscar alternativas sin que la reserva que se está editando se compare consigo misma.
 
 `/resources/{resource_id}/available-windows` devuelve los huecos continuos disponibles dentro de un rango de hasta siete días. `minimum_duration_minutes` permite descartar huecos demasiado cortos, con valores entre 30 y 480 minutos. También acepta `exclude_reservation_id`.
@@ -292,7 +295,7 @@ Esta versión está pensada para aprender y seguir creciendo, no para usarla dir
 - La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
 - Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
 - No hay login, usuarios, roles ni permisos.
-- No hay días no laborables ni reservas recurrentes.
+- No hay reservas recurrentes.
 - Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
 - El proyecto no incluye frontend, Docker ni configuración de despliegue.
 

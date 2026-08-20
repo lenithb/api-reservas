@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, field_validator
@@ -21,6 +21,7 @@ class ResourceCreate(BaseModel):
     is_active: bool = True
     opening_time: time | None = None
     closing_time: time | None = None
+    closed_dates: list[date] = Field(default_factory=list)
 
     @field_validator("closing_time")
     @classmethod
@@ -43,8 +44,9 @@ class ResourceUpdate(BaseModel):
     is_active: bool | None = None
     opening_time: time | None = None
     closing_time: time | None = None
+    closed_dates: list[date] | None = None
 
-    @field_validator("name", "resource_type", "capacity", "is_active")
+    @field_validator("name", "resource_type", "capacity", "is_active", "closed_dates")
     @classmethod
     def required_fields_cannot_be_null(cls, value: object) -> object:
         if value is None:
@@ -61,6 +63,7 @@ class ResourceRead(ORMModel):
     is_active: bool
     opening_time: time | None
     closing_time: time | None
+    closed_dates: list[date]
     created_at: datetime
     updated_at: datetime
 

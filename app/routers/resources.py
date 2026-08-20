@@ -33,7 +33,9 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 @router.post("", response_model=ResourceRead, status_code=status.HTTP_201_CREATED)
 async def create_resource(payload: ResourceCreate, db: DbSession) -> Resource:
-    resource = Resource(**payload.model_dump())
+    values = payload.model_dump()
+    values["closed_dates"] = [day.isoformat() for day in payload.closed_dates]
+    resource = Resource(**values)
     db.add(resource)
     db.commit()
     db.refresh(resource)
@@ -198,6 +200,8 @@ async def update_resource(
 ) -> Resource:
     resource = get_resource_or_error(db, resource_id)
     changes = payload.model_dump(exclude_unset=True)
+    if "closed_dates" in changes:
+        changes["closed_dates"] = [day.isoformat() for day in payload.closed_dates or []]
     opening_time = changes.get("opening_time", resource.opening_time)
     closing_time = changes.get("closing_time", resource.closing_time)
     if (opening_time is None) != (closing_time is None):
