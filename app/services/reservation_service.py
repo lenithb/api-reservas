@@ -478,3 +478,35 @@ def cancel_reservation(db: Session, reservation: Reservation) -> Reservation:
     db.commit()
     db.refresh(reservation)
     return reservation
+
+
+def cancel_recurring_series(db: Session, reservation: Reservation) -> list[Reservation]:
+    if reservation.series_id is None:
+        raise AppError(
+            409,
+            "RESERVATION_NOT_RECURRING",
+            "La reserva no pertenece a una serie recurrente.",
+        )
+
+    reservations = list(
+        db.scalars(
+            select(Reservation)
+            .where(
+                Reservation.series_id == reservation.series_id,
+                Reservation.start_at >= utc_now(),
+                Reservation.status.in_(
+                    [ReservationStatus.PENDING, ReservationStatus.CONFIRMED]
+                ),
+            )
+            .order_by(Reservation.start_at, Reservation.id)
+        )
+    )
+    cancelled_at = utc_now()
+    for recurring_reservation in reservations:
+        recurring_reservation.status = ReservationStatus.CANCELLED
+        recurring_reservation.cancelled_at = cancelled_at
+
+    db.commit()
+    for recurring_reservation in reservations:
+        db.refresh(recurring_reservation)
+    return reservations

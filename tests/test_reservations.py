@@ -109,6 +109,44 @@ async def test_recurring_reservations_are_atomic_when_an_occurrence_is_unavailab
     assert list_response.json()["total"] == 0
 
 
+async def test_cancel_future_recurring_reservations(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = base_time()
+    create_response = await client.post(
+        "/reservations/recurring",
+        json={
+            **reservation_data(base_entities, start_at, start_at + timedelta(hours=1)),
+            "occurrences": 3,
+        },
+    )
+    assert create_response.status_code == 201
+
+    reservations = create_response.json()
+    cancel_response = await client.post(
+        f"/reservations/{reservations[1]['id']}/cancel-series"
+    )
+
+    assert cancel_response.status_code == 200
+    cancelled_reservations = cancel_response.json()
+    assert [item["id"] for item in cancelled_reservations] == [
+        reservation["id"] for reservation in reservations
+    ]
+    assert all(item["status"] == "cancelled" for item in cancelled_reservations)
+    assert all(item["cancelled_at"] is not None for item in cancelled_reservations)
+
+
+async def test_cannot_cancel_series_from_a_regular_reservation(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    reservation = await create_existing_reservation(client, base_entities)
+
+    response = await client.post(f"/reservations/{reservation['id']}/cancel-series")
+
+    assert response.status_code == 409
+    assert error_code(response) == "RESERVATION_NOT_RECURRING"
+
+
 async def test_reject_end_before_start(
     client: AsyncClient, base_entities: dict[str, int]
 ) -> None:

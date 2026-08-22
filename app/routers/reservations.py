@@ -17,6 +17,7 @@ from app.schemas.reservation import (
 )
 from app.services.reservation_service import (
     cancel_reservation,
+    cancel_recurring_series,
     create_reservation,
     create_recurring_reservations,
     get_reservation_or_error,
@@ -106,3 +107,9 @@ async def update(
 async def cancel(reservation_id: int, db: DbSession) -> Reservation:
     reservation = get_reservation_or_error(db, reservation_id)
     return cancel_reservation(db, reservation)
+
+
+@router.post("/{reservation_id}/cancel-series", response_model=list[ReservationRead])
+async def cancel_series(reservation_id: int, db: DbSession) -> list[Reservation]:
+    reservation = get_reservation_or_error(db, reservation_id)
+    return cancel_recurring_series(db, reservation)

@@ -222,6 +222,8 @@ Los tres listados usan `page` y `limit` para la paginación; el límite máximo 
 
 `POST /reservations/recurring` recibe los mismos datos que una reserva normal, más `occurrences` (entre 2 y 52) e `interval_weeks` (por defecto, 1). La API valida toda la serie antes de crearla: si una ocurrencia no cumple las reglas de horario, cierre o disponibilidad, no se guarda ninguna. Cada reserva de la serie devuelve el mismo `series_id`.
 
+`POST /reservations/{reservation_id}/cancel-series` cancela todas las reservas pendientes o confirmadas de la misma serie que todavía no hayan comenzado. Se puede usar el identificador de cualquiera de sus reservas; las ocurrencias pasadas y las ya finalizadas se conservan.
+
 Una respuesta paginada tiene este formato:
 
 ```json
@@ -299,12 +301,12 @@ Esta versión está pensada para aprender y seguir creciendo, no para usarla dir
 - La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
 - Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
 - No hay login, usuarios, roles ni permisos.
-- Las series recurrentes son semanales y no incluyen por ahora edición o cancelación conjunta.
+- Las series recurrentes son semanales y no incluyen por ahora edición conjunta.
 - Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
 - El proyecto no incluye frontend, Docker ni configuración de despliegue.
 
 ## Ideas para continuar
 
-Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, agregar autenticación y sumar reglas como horarios de apertura o días no laborables. Más adelante también voy incorporar reservas recurrentes y notificaciones.
+Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, agregar autenticación y sumar reglas como días no laborables y notificaciones.
 
 Nada de eso forma parte de `v0.3.1`; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.
