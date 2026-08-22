@@ -95,3 +95,40 @@ async def test_date_filter_rejects_an_inverted_range(client: AsyncClient) -> Non
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "INVALID_FILTER_DATE_RANGE"
+
+
+async def test_filter_reservations_by_series_id(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    start_at = at(future_day(), 10)
+    recurring_response = await client.post(
+        "/reservations/recurring",
+        json={
+            "resource_id": base_entities["resource_id"],
+            "customer_id": base_entities["customer_id"],
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=1)).isoformat(),
+            "status": "confirmed",
+            "occurrences": 2,
+        },
+    )
+    assert recurring_response.status_code == 201
+    recurring_reservations = recurring_response.json()
+    await create_reservation(
+        client,
+        base_entities,
+        start_at + timedelta(days=1),
+        start_at + timedelta(days=1, hours=1),
+    )
+
+    response = await client.get(
+        "/reservations",
+        params={"series_id": recurring_reservations[0]["series_id"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert [item["id"] for item in body["items"]] == [
+        item["id"] for item in recurring_reservations
+    ]

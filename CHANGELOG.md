@@ -10,6 +10,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Fechas de cierre puntuales por recurso, aplicadas a reservas y consultas de disponibilidad.
 - Creación atómica de series de reservas recurrentes semanales, con hasta 52 ocurrencias.
 - Cancelación conjunta de las ocurrencias futuras de una serie recurrente.
+- Filtro de reservas por identificador de serie.
 
 ## [0.3.1] - 2026-08-07
 

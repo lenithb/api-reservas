@@ -49,6 +49,7 @@ async def list_reservations(
     db: DbSession,
     resource_id: int | None = None,
     customer_id: int | None = None,
+    series_id: str | None = None,
     reservation_status: Annotated[
         ReservationStatus | None, Query(alias="status")
     ] = None,
@@ -69,6 +70,8 @@ async def list_reservations(
         filters.append(Reservation.resource_id == resource_id)
     if customer_id is not None:
         filters.append(Reservation.customer_id == customer_id)
+    if series_id is not None:
+        filters.append(Reservation.series_id == series_id)
     if reservation_status is not None:
         filters.append(Reservation.status == reservation_status)
     if start_date is not None:
