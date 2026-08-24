@@ -124,10 +124,14 @@ def is_within_opening_hours(
     resource: Resource, start_at: datetime, end_at: datetime
 ) -> bool:
     closed_dates = set(resource.closed_dates)
+    closed_weekdays = set(resource.closed_weekdays)
     current_day = start_at.date()
     last_day = (end_at - timedelta(microseconds=1)).date()
     while current_day <= last_day:
-        if current_day.isoformat() in closed_dates:
+        if (
+            current_day.isoformat() in closed_dates
+            or current_day.weekday() in closed_weekdays
+        ):
             return False
         current_day += timedelta(days=1)
 
@@ -148,14 +152,18 @@ def ensure_within_opening_hours(
     resource: Resource, start_at: datetime, end_at: datetime
 ) -> None:
     closed_dates = set(resource.closed_dates)
+    closed_weekdays = set(resource.closed_weekdays)
     current_day = start_at.date()
     last_day = (end_at - timedelta(microseconds=1)).date()
     while current_day <= last_day:
-        if current_day.isoformat() in closed_dates:
+        if (
+            current_day.isoformat() in closed_dates
+            or current_day.weekday() in closed_weekdays
+        ):
             raise AppError(
                 409,
                 "RESOURCE_CLOSED",
-                "El recurso no está disponible en una de las fechas solicitadas.",
+                "El recurso no está disponible en una de las fechas o días solicitados.",
             )
         current_day += timedelta(days=1)
 
@@ -174,6 +182,7 @@ def opening_windows(
         resource.opening_time is None
         and resource.closing_time is None
         and not resource.closed_dates
+        and not resource.closed_weekdays
     ):
         return [(start_at, end_at)]
     if (resource.opening_time is None) != (resource.closing_time is None):
@@ -182,7 +191,10 @@ def opening_windows(
     windows: list[tuple[datetime, datetime]] = []
     current_day = start_at.date()
     while current_day <= end_at.date():
-        if current_day.isoformat() in resource.closed_dates:
+        if (
+            current_day.isoformat() in resource.closed_dates
+            or current_day.weekday() in resource.closed_weekdays
+        ):
             current_day += timedelta(days=1)
             continue
         opening_at = datetime.combine(

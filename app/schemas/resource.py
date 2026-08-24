@@ -11,6 +11,7 @@ RequiredName = Annotated[
 ResourceType = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)
 ]
+Weekday = Annotated[int, Field(ge=0, le=6)]
 
 
 class ResourceCreate(BaseModel):
@@ -22,6 +23,7 @@ class ResourceCreate(BaseModel):
     opening_time: time | None = None
     closing_time: time | None = None
     closed_dates: list[date] = Field(default_factory=list)
+    closed_weekdays: list[Weekday] = Field(default_factory=list)
 
     @field_validator("closing_time")
     @classmethod
@@ -45,8 +47,11 @@ class ResourceUpdate(BaseModel):
     opening_time: time | None = None
     closing_time: time | None = None
     closed_dates: list[date] | None = None
+    closed_weekdays: list[Weekday] | None = None
 
-    @field_validator("name", "resource_type", "capacity", "is_active", "closed_dates")
+    @field_validator(
+        "name", "resource_type", "capacity", "is_active", "closed_dates", "closed_weekdays"
+    )
     @classmethod
     def required_fields_cannot_be_null(cls, value: object) -> object:
         if value is None:
@@ -64,6 +69,7 @@ class ResourceRead(ORMModel):
     opening_time: time | None
     closing_time: time | None
     closed_dates: list[date]
+    closed_weekdays: list[Weekday]
     created_at: datetime
     updated_at: datetime
 

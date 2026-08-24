@@ -189,6 +189,8 @@ Al crear o editar un recurso se pueden enviar `opening_time` y `closing_time` en
 
 El campo `closed_dates` acepta una lista de fechas UTC con formato `YYYY-MM-DD`. Durante una fecha cerrada no se pueden crear o mover reservas, el recurso no aparece en las búsquedas de ese día y no se devuelven ventanas disponibles.
 
+El campo `closed_weekdays` acepta los días semanales de cierre como números entre `0` (lunes) y `6` (domingo). Se aplica con las mismas reglas que `closed_dates`, por lo que sirve para configurar, por ejemplo, un recurso cerrado todos los domingos.
+
 Tanto `/resources/available` como `/resources/{resource_id}/availability` aceptan `exclude_reservation_id`. Este parámetro permite comprobar un cambio de horario o buscar alternativas sin que la reserva que se está editando se compare consigo misma.
 
 `/resources/{resource_id}/available-windows` devuelve los huecos continuos disponibles dentro de un rango de hasta siete días. `minimum_duration_minutes` permite descartar huecos demasiado cortos, con valores entre 30 y 480 minutos. También acepta `exclude_reservation_id`.

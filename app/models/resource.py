@@ -22,6 +22,7 @@ class Resource(Base):
     opening_time: Mapped[time | None] = mapped_column(Time)
     closing_time: Mapped[time | None] = mapped_column(Time)
     closed_dates: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    closed_weekdays: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utc_now, nullable=False
     )

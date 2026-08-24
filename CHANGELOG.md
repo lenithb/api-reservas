@@ -4,6 +4,10 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 ## [Sin publicar]
 
+### Agregado
+
+- Días de cierre semanales opcionales por recurso, aplicados a reservas y consultas de disponibilidad.
+
 ## [0.4.0] - 2026-08-24
 
 ### Agregado

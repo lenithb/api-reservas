@@ -223,3 +223,47 @@ async def test_closed_dates_block_reservations_and_availability(
     assert windows_response.json()["windows"] == []
     assert search_response.status_code == 200
     assert all(item["id"] != resource_id for item in search_response.json()["items"])
+
+
+async def test_closed_weekdays_block_reservations_and_availability(
+    client: AsyncClient, base_entities: dict[str, int]
+) -> None:
+    resource_id = base_entities["resource_id"]
+    start_at = search_start()
+    update_response = await client.patch(
+        f"/resources/{resource_id}",
+        json={"closed_weekdays": [start_at.weekday()]},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["closed_weekdays"] == [start_at.weekday()]
+
+    reservation_response = await client.post(
+        "/reservations",
+        json={
+            "resource_id": resource_id,
+            "customer_id": base_entities["customer_id"],
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=1)).isoformat(),
+        },
+    )
+    windows_response = await client.get(
+        f"/resources/{resource_id}/available-windows",
+        params={
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=2)).isoformat(),
+        },
+    )
+    search_response = await client.get(
+        "/resources/available",
+        params={
+            "start_at": start_at.isoformat(),
+            "end_at": (start_at + timedelta(hours=1)).isoformat(),
+        },
+    )
+
+    assert reservation_response.status_code == 409
+    assert reservation_response.json()["detail"]["code"] == "RESOURCE_CLOSED"
+    assert windows_response.status_code == 200
+    assert windows_response.json()["windows"] == []
+    assert search_response.status_code == 200
+    assert all(item["id"] != resource_id for item in search_response.json()["items"])
