@@ -15,7 +15,7 @@ async def test_openapi_exposes_current_version(client: AsyncClient) -> None:
     response = await client.get("/openapi.json")
 
     assert response.status_code == 200
-    assert response.json()["info"]["version"] == "0.3.1"
+    assert response.json()["info"]["version"] == "0.4.0"
 
 
 async def test_duplicate_customer_email_is_rejected(client: AsyncClient) -> None:
