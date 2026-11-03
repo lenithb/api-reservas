@@ -4,6 +4,8 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 ## [Sin publicar]
 
+## [0.5.0] - 2026-11-03
+
 ### Agregado
 
 - Días de cierre semanales opcionales por recurso, aplicados a reservas y consultas de disponibilidad.
@@ -59,7 +61,8 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Cancelación de reservas y transiciones básicas de estado.
 - Migraciones con Alembic, datos de ejemplo y pruebas automatizadas.
 
-[Sin publicar]: https://github.com/lenithb/api-reservas/compare/v0.4.0...HEAD
+[Sin publicar]: https://github.com/lenithb/api-reservas/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/lenithb/api-reservas/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/lenithb/api-reservas/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/lenithb/api-reservas/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/lenithb/api-reservas/compare/v0.2.0...v0.3.0
