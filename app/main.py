@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import __version__
 from app.exceptions import AppError, app_error_handler
-from app.routers import customers, reservations, resources
+from app.routers import auth, customers, reservations, resources, users
 
 app = FastAPI(
     title="Reservation API",
@@ -28,11 +28,14 @@ async def sqlalchemy_error_handler(request: object, exc: SQLAlchemyError) -> JSO
     )
 
 
+
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(resources.router)
 app.include_router(customers.router)
 app.include_router(reservations.router)

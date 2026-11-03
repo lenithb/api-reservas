@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user, require_admin
 from app.database import get_db
 from app.exceptions import AppError
 from app.models.customer import Customer
@@ -12,7 +13,11 @@ from app.models.reservation import Reservation
 from app.schemas.customer import CustomerCreate, CustomerPage, CustomerRead, CustomerUpdate
 from app.services.reservation_service import get_customer_or_error
 
-router = APIRouter(prefix="/customers", tags=["customers"])
+router = APIRouter(
+    prefix="/customers",
+    tags=["customers"],
+    dependencies=[Depends(get_current_user)],
+)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -30,7 +35,12 @@ def ensure_email_is_available(
         raise AppError(409, "EMAIL_ALREADY_EXISTS", "El email ya está registrado.")
 
 
-@router.post("", response_model=CustomerRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=CustomerRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def create_customer(payload: CustomerCreate, db: DbSession) -> Customer:
     email = normalized_email(payload.email)
     ensure_email_is_available(db, email)
@@ -80,7 +90,11 @@ async def get_customer(customer_id: int, db: DbSession) -> Customer:
     return get_customer_or_error(db, customer_id)
 
 
-@router.patch("/{customer_id}", response_model=CustomerRead)
+@router.patch(
+    "/{customer_id}",
+    response_model=CustomerRead,
+    dependencies=[Depends(require_admin)],
+)
 async def update_customer(
     customer_id: int, payload: CustomerUpdate, db: DbSession
 ) -> Customer:
@@ -100,7 +114,11 @@ async def update_customer(
     return customer
 
 
-@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{customer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin)],
+)
 async def delete_customer(customer_id: int, db: DbSession) -> Response:
     customer = get_customer_or_error(db, customer_id)
     has_reservations = db.scalar(

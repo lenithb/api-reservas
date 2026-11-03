@@ -1,12 +1,32 @@
+import os
 from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.auth import hash_password
 from app.models.customer import Customer
 from app.models.resource import Resource
+from app.models.user import User
 from app.schemas.reservation import ReservationCreate
 from app.services.reservation_service import cancel_reservation, create_reservation
+
+
+def ensure_admin_user() -> None:
+    with SessionLocal() as db:
+        if db.scalar(select(User.id).limit(1)) is not None:
+            return
+        admin = User(
+            full_name="Administrador",
+            email=os.getenv("APP_SEED_ADMIN_EMAIL", "admin@example.com"),
+            hashed_password=hash_password(
+                os.getenv("APP_SEED_ADMIN_PASSWORD", "admin1234")
+            ),
+            role="admin",
+        )
+        db.add(admin)
+        db.commit()
+        print(f"Usuario administrador creado: {admin.email}")
 
 
 def future_datetime(days: int, hour: int) -> datetime:
@@ -15,6 +35,7 @@ def future_datetime(days: int, hour: int) -> datetime:
 
 
 def seed() -> None:
+    ensure_admin_user()
     with SessionLocal() as db:
         if db.scalar(select(Resource.id).limit(1)) is not None:
             print("La base ya contiene recursos. No se cargaron datos nuevos.")

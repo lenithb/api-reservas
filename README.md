@@ -2,12 +2,13 @@
 
 La versión actual es `v0.5.0`. Esta API REST permite manejar recursos, clientes y reservas, y sirve como punto de partida para distintos casos: una cancha, un consultorio, una sala, una habitación, un vehículo o cualquier otra cosa que se pueda reservar por horario.
 
-Es un proyecto solamente de backend. Por ahora busco resolver bien lo esencial: crear reservas, evitar cruces de horarios y permitir cancelaciones. Todavía no tiene autenticación ni componentes pensados para producción, así que queda bastante lugar para seguir practicando y mejorándolo.
+Es un proyecto solamente de backend. Por ahora busco resolver bien lo esencial: crear reservas, evitar cruces de horarios y permitir cancelaciones. La API ya tiene autenticación básica con JWT y roles; todavía no tiene componentes pensados para producción, así que queda bastante lugar para seguir practicando y mejorándolo.
 
 Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md).
 
 ## Qué se puede hacer
 
+- Iniciar sesión con JWT (`POST /auth/login`) y administrar usuarios con roles `admin` y `user`.
 - Crear, consultar, editar y eliminar recursos reservables.
 - Crear y administrar clientes.
 - Registrar reservas con estados `pending`, `confirmed`, `cancelled` y `completed`.
@@ -66,11 +67,15 @@ El proyecto trae un archivo de ejemplo para la configuración:
 cp .env.example .env
 ```
 
-En esta versión solamente se configura la conexión a SQLite:
+En esta versión se configura la conexión a SQLite y las variables de autenticación:
 
 ```env
 DATABASE_URL=sqlite:///./reservations.db
+APP_JWT_SECRET=cambiar-por-un-secreto-largo-y-unico
+APP_JWT_EXPIRES_MINUTES=1440
 ```
+
+`APP_JWT_SECRET` firma los tokens de sesión; si no se define, la API usa un secreto de desarrollo que hay que reemplazar antes de exponer la API. `APP_JWT_EXPIRES_MINUTES` define cuánto vale un token (por defecto, 24 horas).
 
 El archivo `reservations.db` se crea en la raíz del proyecto y está ignorado por Git.
 
@@ -92,11 +97,13 @@ La aplicación no crea las tablas automáticamente cuando arranca. Eso queda a c
 
 ## Cargar algunos datos de ejemplo
 
-Hay un script pequeño que agrega tres recursos, tres clientes, dos reservas confirmadas y una reserva cancelada:
+Hay un script pequeño que agrega un administrador inicial, tres recursos, tres clientes, dos reservas confirmadas y una reserva cancelada:
 
 ```bash
 python -m scripts.seed
 ```
+
+El administrador se crea con el email `admin@example.com` y la contraseña `admin1234` (configurables con `APP_SEED_ADMIN_EMAIL` y `APP_SEED_ADMIN_PASSWORD`). El script nunca vuelve a crear usuarios si ya existe alguno.
 
 Si la base ya contiene recursos, el script no vuelve a insertar los datos.
 
@@ -123,7 +130,7 @@ FastAPI genera la documentación interactiva automáticamente:
 pytest
 ```
 
-Las pruebas usan una base SQLite temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente.
+ Las pruebas usan una base SQLite temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente. También hay una suite de autenticación que cubre el login, tokens vencidos o inválidos, permisos por rol y las guardas sobre usuarios administradores.
 
 ## Estructura del proyecto
 
@@ -133,19 +140,24 @@ api-reservas/
 │   ├── main.py
 │   ├── database.py
 │   ├── exceptions.py
+│   ├── auth.py
 │   ├── models/
 │   │   ├── customer.py
 │   │   ├── reservation.py
-│   │   └── resource.py
+│   │   ├── resource.py
+│   │   └── user.py
 │   ├── schemas/
 │   │   ├── common.py
 │   │   ├── customer.py
 │   │   ├── reservation.py
-│   │   └── resource.py
+│   │   ├── resource.py
+│   │   └── user.py
 │   ├── routers/
+│   │   ├── auth.py
 │   │   ├── customers.py
 │   │   ├── reservations.py
-│   │   └── resources.py
+│   │   ├── resources.py
+│   │   └── users.py
 │   └── services/
 │       └── reservation_service.py
 ├── alembic/
@@ -160,7 +172,7 @@ api-reservas/
 └── README.md
 ```
 
-Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas, disponibilidad, actualización y cancelación viven en `reservation_service.py`. Para no complicar de más esta etapa, no se agregó una capa de repositorios.
+Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas, disponibilidad, actualización y cancelación viven en `reservation_service.py`; el hash de contraseñas, los tokens JWT y las dependencias de roles están en `app/auth.py`. Para no complicar de más esta etapa, no se agregó una capa de repositorios.
 
 ## Endpoints disponibles
 
@@ -169,6 +181,25 @@ Los routers se ocupan de las peticiones HTTP. Las reglas relacionadas con fechas
 | Método | Ruta      | Para qué sirve                        |
 | ------ | --------- | ------------------------------------- |
 | `GET`  | `/health` | Comprueba que la API está funcionando |
+
+### Autenticación
+
+| Método | Ruta          | Para qué sirve                          |
+| ------ | ------------- | --------------------------------------- |
+| `POST` | `/auth/login` | Iniciar sesión y obtener un token JWT   |
+
+### Usuarios
+
+| Método   | Ruta             | Para qué sirve                        |
+| -------- | ---------------- | ------------------------------------- |
+| `POST`   | `/users`         | Crear un usuario (rol `admin`)        |
+| `GET`    | `/users`         | Listar usuarios (rol `admin`)         |
+| `GET`    | `/users/me`      | Consultar el propio perfil            |
+| `GET`    | `/users/{user_id}` | Consultar un usuario (rol `admin`), |
+| `PATCH`  | `/users/{user_id}` | Modificar un usuario (rol `admin`), |
+| `DELETE` | `/users/{user_id}` | Eliminar un usuario (rol `admin`)   |
+
+El listado acepta el parámetro `search` y usa la paginación común. Al crear se envían `full_name`, `email`, `password` y el `role` (`admin` o `user`, por defecto `user`). Con PATCH se puede cambiar el nombre, el email, la contraseña, el rol y `is_active`; los campos que no se envían quedan como están. La respuesta nunca incluye la contraseña.
 
 ### Recursos
 
@@ -237,6 +268,44 @@ Una respuesta paginada tiene este formato:
 }
 ```
 
+## Autenticación
+
+Todos los endpoints requieren un token JWT salvo `/health`, `/docs` y `/openapi.json`. El flujo sigue el estándar OAuth2 de FastAPI, así que en Swagger UI se puede hacer clic en **Authorize** y pasar email y contraseña.
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -d "username=admin@example.com&password=admin1234"
+```
+
+La respuesta incluye el token y su fecha de expiración:
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "expires_at": "2026-11-04T15:00:00Z"
+}
+```
+
+Las demás peticiones envían el encabezado:
+
+```text
+Authorization: Bearer eyJhbGciOi...
+```
+
+Un token vencido, un usuario desactivado o un encabezado faltante devuelven `401` con el código `AUTH_NOT_AUTHENTICATED` y el encabezado `WWW-Authenticate: Bearer`. Credenciales incorrectas en el login devuelven `401` con `AUTH_INVALID_CREDENTIALS`.
+
+### Roles y permisos
+
+| Acción                                        | `user` | `admin` |
+| --------------------------------------------- | ------ | ------- |
+| Consultar recursos, clientes, reservas y ventanas | sí     | sí      |
+| Crear, editar y cancelar reservas             | sí     | sí      |
+| Crear, editar y eliminar recursos y clientes  | no     | sí      |
+| Administrar usuarios (`/users`)               | no     | sí      |
+
+El email de cada usuario es único y la contraseña tiene entre 8 y 72 caracteres. Un usuario desactivado no puede iniciar sesión ni validar su token. Para que no quede nadie con permisos, no se puede eliminar el propio usuario, desactivarse a sí mismo, ni quitar o degradar al último administrador activo.
+
 ## Cómo se manejan las fechas
 
 Todas las fechas de una reserva deben incluir la zona horaria. Por ejemplo, una fecha de Argentina puede enviarse así:
@@ -293,7 +362,7 @@ Los errores de negocio devuelven un código corto y un mensaje que explica el pr
 }
 ```
 
-También hay respuestas específicas para recursos, clientes o reservas inexistentes, emails repetidos, fechas incorrectas, recursos inactivos, eliminaciones no permitidas y cambios de estado inválidos. Los detalles internos de SQLAlchemy no se muestran al cliente.
+También hay respuestas específicas para recursos, clientes, reservas o usuarios inexistentes, emails repetidos, fechas incorrectas, recursos inactivos, credenciales incorrectas, falta de autenticación (`AUTH_NOT_AUTHENTICATED`), permisos insuficientes (`AUTH_ADMIN_REQUIRED`), eliminaciones no permitidas y cambios de estado inválidos. Los detalles internos de SQLAlchemy no se muestran al cliente.
 
 ## Cosas que todavía faltan
 
@@ -302,13 +371,14 @@ Esta versión está pensada para aprender y seguir creciendo, no para usarla dir
 - SQLite funciona bien para desarrollo y cargas pequeñas, pero no está pensado para mucha concurrencia.
 - La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
 - Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
-- No hay login, usuarios, roles ni permisos.
+- La autenticación es básica: no hay refresh tokens, logout ni cambio de contraseña por el propio usuario.
+- El email de cada usuario puede cambiarse sin pedir la contraseña actual.
 - Las series recurrentes son semanales y no incluyen por ahora edición conjunta.
 - Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
 - El proyecto no incluye frontend, Docker ni configuración de despliegue.
 
 ## Ideas para continuar
 
-Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, agregar autenticación y sumar reglas como días no laborables y notificaciones.
+Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, sumar refresh tokens y autenticación de los clientes, agregar edición de series recurrentes y notificaciones.
 
-Nada de eso forma parte de `v0.3.1`; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.
+Nada de eso forma parte del próximo release todavía; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.

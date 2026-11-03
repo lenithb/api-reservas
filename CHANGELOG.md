@@ -4,6 +4,17 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 
 ## [Sin publicar]
 
+### Agregado
+
+- Autenticación con JWT: inicio de sesión en `POST /auth/login` y protección de todos los endpoints salvo `/health` y la documentación.
+- Tabla de usuarios con roles `admin` y `user`, administrada por el personal desde `/users` con guardas sobre el último administrador activo.
+- Creación de un administrador inicial en el script de datos de ejemplo.
+
+### Cambiado
+
+- Crear, editar y eliminar recursos y clientes ahora requiere rol de administrador. Las reservas pueden gestionarlas todos los usuarios autenticados.
+- Los errores de autenticación devuelven `401` con el encabezado `WWW-Authenticate: Bearer`.
+
 ## [0.5.0] - 2026-11-03
 
 ### Agregado

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user, require_admin
 from app.database import get_db
 from app.exceptions import AppError
 from app.models.reservation import Reservation, ReservationStatus
@@ -27,11 +28,20 @@ from app.services.reservation_service import (
     validate_time_range,
 )
 
-router = APIRouter(prefix="/resources", tags=["resources"])
+router = APIRouter(
+    prefix="/resources",
+    tags=["resources"],
+    dependencies=[Depends(get_current_user)],
+)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-@router.post("", response_model=ResourceRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ResourceRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def create_resource(payload: ResourceCreate, db: DbSession) -> Resource:
     values = payload.model_dump()
     values["closed_dates"] = [day.isoformat() for day in payload.closed_dates]
@@ -194,7 +204,11 @@ async def get_resource(resource_id: int, db: DbSession) -> Resource:
     return get_resource_or_error(db, resource_id)
 
 
-@router.patch("/{resource_id}", response_model=ResourceRead)
+@router.patch(
+    "/{resource_id}",
+    response_model=ResourceRead,
+    dependencies=[Depends(require_admin)],
+)
 async def update_resource(
     resource_id: int, payload: ResourceUpdate, db: DbSession
 ) -> Resource:
@@ -228,7 +242,11 @@ async def update_resource(
     return resource
 
 
-@router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{resource_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin)],
+)
 async def delete_resource(resource_id: int, db: DbSession) -> Response:
     resource = get_resource_or_error(db, resource_id)
     has_reservations = db.scalar(

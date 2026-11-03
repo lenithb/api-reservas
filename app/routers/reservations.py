@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.exceptions import AppError
 from app.models.reservation import Reservation, ReservationStatus
@@ -24,7 +25,11 @@ from app.services.reservation_service import (
     update_reservation,
 )
 
-router = APIRouter(prefix="/reservations", tags=["reservations"])
+router = APIRouter(
+    prefix="/reservations",
+    tags=["reservations"],
+    dependencies=[Depends(get_current_user)],
+)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
