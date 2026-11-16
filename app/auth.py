@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -9,13 +8,16 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.exceptions import AppError
 from app.models.user import User
 
-JWT_SECRET = os.getenv("APP_JWT_SECRET", "dev-secret-change-me-in-production-0001")
+settings = get_settings()
+
+JWT_SECRET = settings.jwt_secret
 JWT_ALGORITHM = "HS256"
-TOKEN_EXPIRES_MINUTES = int(os.getenv("APP_JWT_EXPIRES_MINUTES", "1440"))
+TOKEN_EXPIRES_MINUTES = settings.jwt_expires_minutes
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 

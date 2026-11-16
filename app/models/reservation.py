@@ -3,7 +3,8 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import Computed, ForeignKey, Index, String, Text, text
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, TSTZRANGE
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UTCDateTime, utc_now
@@ -24,6 +25,16 @@ class Reservation(Base):
     __tablename__ = "reservations"
     __table_args__ = (
         Index("ix_reservations_resource_period", "resource_id", "start_at", "end_at"),
+        # La base de datos es la última instancia que impide superponer dos
+        # reservas del mismo recurso. El rango es semiabierto ([)) para que dos
+        # reservas consecutivas puedan tocarse en el extremo.
+        ExcludeConstraint(
+            ("resource_id", "="),
+            ("period", "&&"),
+            where=text("status <> 'cancelled'"),
+            using="gist",
+            name="reservations_no_overlapping_periods",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -56,6 +67,10 @@ class Reservation(Base):
         UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    period: Mapped[object | None] = mapped_column(
+        TSTZRANGE,
+        Computed("tstzrange(start_at, end_at, '[)')", persisted=True),
+    )
 
     resource: Mapped["Resource"] = relationship(back_populates="reservations")
     customer: Mapped["Customer"] = relationship(back_populates="reservations")

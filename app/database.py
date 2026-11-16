@@ -1,13 +1,11 @@
-import os
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
-from dotenv import load_dotenv
-from sqlalchemy import DateTime, Engine, create_engine, event
+from sqlalchemy import DateTime, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
-load_dotenv()
+from app.config import get_settings
 
 
 class Base(DeclarativeBase):
@@ -41,19 +39,12 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./reservations.db")
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+settings = get_settings()
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+DATABASE_URL = settings.database_url
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-
-
-@event.listens_for(Engine, "connect")
-def enable_sqlite_foreign_keys(dbapi_connection: object, connection_record: object) -> None:
-    if DATABASE_URL.startswith("sqlite"):
-        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
 
 
 async def get_db() -> AsyncGenerator[Session, None]:

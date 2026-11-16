@@ -6,13 +6,13 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth import create_access_token
 from app.main import app
-from tests.conftest import TestEnvironment
+from tests.conftest import ApiTestContext
 
 pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
-async def anonymous_client(test_env: TestEnvironment) -> AsyncGenerator[AsyncClient, None]:
+async def anonymous_client(test_env: ApiTestContext) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as no_auth_client:
         yield no_auth_client
@@ -47,7 +47,7 @@ async def test_protected_endpoint_rejects_invalid_token(
 
 
 async def test_rejected_expired_token(
-    test_env: TestEnvironment, anonymous_client: AsyncClient
+    test_env: ApiTestContext, anonymous_client: AsyncClient
 ) -> None:
     expired_token, _expires_at = create_access_token(
         test_env.admin_id, expires_delta=timedelta(seconds=-30)
@@ -62,7 +62,7 @@ async def test_rejected_expired_token(
 
 
 async def test_login_returns_usable_token(
-    test_env: TestEnvironment, anonymous_client: AsyncClient
+    test_env: ApiTestContext, anonymous_client: AsyncClient
 ) -> None:
     login_response = await anonymous_client.post(
         "/auth/login",
@@ -101,7 +101,7 @@ async def test_login_rejects_unknown_email(anonymous_client: AsyncClient) -> Non
     assert response.json()["detail"]["code"] == "AUTH_INVALID_CREDENTIALS"
 
 
-async def test_regular_user_cannot_manage_resources(test_env: TestEnvironment) -> None:
+async def test_regular_user_cannot_manage_resources(test_env: ApiTestContext) -> None:
     response = await test_env.client.post(
         "/resources",
         json={
@@ -118,20 +118,20 @@ async def test_regular_user_cannot_manage_resources(test_env: TestEnvironment) -
     assert response.json()["detail"]["code"] == "AUTH_ADMIN_REQUIRED"
 
 
-async def test_regular_user_can_list_resources(test_env: TestEnvironment) -> None:
+async def test_regular_user_can_list_resources(test_env: ApiTestContext) -> None:
     response = await test_env.client.get("/resources", headers=test_env.user_headers)
 
     assert response.status_code == 200
 
 
-async def test_regular_user_cannot_list_users(test_env: TestEnvironment) -> None:
+async def test_regular_user_cannot_list_users(test_env: ApiTestContext) -> None:
     response = await test_env.client.get("/users", headers=test_env.user_headers)
 
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "AUTH_ADMIN_REQUIRED"
 
 
-async def test_regular_user_cannot_delete_customers(test_env: TestEnvironment) -> None:
+async def test_regular_user_cannot_delete_customers(test_env: ApiTestContext) -> None:
     response = await test_env.client.delete(
         "/customers/1", headers=test_env.user_headers
     )
@@ -140,7 +140,7 @@ async def test_regular_user_cannot_delete_customers(test_env: TestEnvironment) -
     assert response.json()["detail"]["code"] == "AUTH_ADMIN_REQUIRED"
 
 
-async def test_current_profile(test_env: TestEnvironment) -> None:
+async def test_current_profile(test_env: ApiTestContext) -> None:
     response = await test_env.client.get("/users/me", headers=test_env.user_headers)
 
     assert response.status_code == 200
@@ -150,7 +150,7 @@ async def test_current_profile(test_env: TestEnvironment) -> None:
     assert "hashed_password" not in profile
 
 
-async def test_admin_can_create_and_list_users(test_env: TestEnvironment) -> None:
+async def test_admin_can_create_and_list_users(test_env: ApiTestContext) -> None:
     create_response = await test_env.client.post(
         "/users",
         json={
@@ -169,7 +169,7 @@ async def test_admin_can_create_and_list_users(test_env: TestEnvironment) -> Non
     assert "recepcion@example.com" in emails
 
 
-async def test_admin_cannot_create_duplicate_user(test_env: TestEnvironment) -> None:
+async def test_admin_cannot_create_duplicate_user(test_env: ApiTestContext) -> None:
     response = await test_env.client.post(
         "/users",
         json={
@@ -190,7 +190,7 @@ async def test_created_user_reports_missing_password(anonymous_client: AsyncClie
     assert response.status_code == 401
 
 
-async def test_deactivated_user_token_is_rejected(test_env: TestEnvironment) -> None:
+async def test_deactivated_user_token_is_rejected(test_env: ApiTestContext) -> None:
     deactivate = await test_env.client.patch(
         f"/users/{test_env.regular_id}", json={"is_active": False}
     )
@@ -203,7 +203,7 @@ async def test_deactivated_user_token_is_rejected(test_env: TestEnvironment) -> 
     assert response.json()["detail"]["code"] == "AUTH_NOT_AUTHENTICATED"
 
 
-async def test_last_active_admin_cannot_be_demoted(test_env: TestEnvironment) -> None:
+async def test_last_active_admin_cannot_be_demoted(test_env: ApiTestContext) -> None:
     demote = await test_env.client.patch(
         f"/users/{test_env.admin_id}", json={"role": "user"}
     )
@@ -212,7 +212,7 @@ async def test_last_active_admin_cannot_be_demoted(test_env: TestEnvironment) ->
     assert demote.json()["detail"]["code"] == "USER_LAST_ADMIN_NOT_ALLOWED"
 
 
-async def test_admin_cannot_deactivate_self(test_env: TestEnvironment) -> None:
+async def test_admin_cannot_deactivate_self(test_env: ApiTestContext) -> None:
     response = await test_env.client.patch(
         f"/users/{test_env.admin_id}", json={"is_active": False}
     )
@@ -223,14 +223,14 @@ async def test_admin_cannot_deactivate_self(test_env: TestEnvironment) -> None:
     )
 
 
-async def test_admin_cannot_delete_self(test_env: TestEnvironment) -> None:
+async def test_admin_cannot_delete_self(test_env: ApiTestContext) -> None:
     response = await test_env.client.delete(f"/users/{test_env.admin_id}")
 
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "USER_SELF_DELETE_NOT_ALLOWED"
 
 
-async def test_admin_can_delete_secondary_user(test_env: TestEnvironment) -> None:
+async def test_admin_can_delete_secondary_user(test_env: ApiTestContext) -> None:
     create_response = await test_env.client.post(
         "/users",
         json={
