@@ -9,11 +9,17 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Autenticación con JWT: inicio de sesión en `POST /auth/login` y protección de todos los endpoints salvo `/health` y la documentación.
 - Tabla de usuarios con roles `admin` y `user`, administrada por el personal desde `/users` con guardas sobre el último administrador activo.
 - Creación de un administrador inicial en el script de datos de ejemplo.
+- Restricción de exclusión en PostgreSQL que impide superponer reservas no canceladas del mismo recurso, con la extensión `btree_gist`.
+- Configuración centralizada con pydantic-settings en `app/config.py`, que valida la conexión, el secreto JWT y el entorno de ejecución.
+- Pruebas de concurrencia que lanzan ocho peticiones simultáneas sobre el mismo horario y comprueban que sólo queda una reserva creada.
 
 ### Cambiado
 
 - Crear, editar y eliminar recursos y clientes ahora requiere rol de administrador. Las reservas pueden gestionarlas todos los usuarios autenticados.
 - Los errores de autenticación devuelven `401` con el encabezado `WWW-Authenticate: Bearer`.
+- La base de datos pasa de SQLite a PostgreSQL en todos los entornos. `DATABASE_URL` tiene que apuntar a PostgreSQL.
+- Las columnas JSON de los recursos pasan a `JSONB`.
+- El solapamiento rechazado por la base de datos devuelve el mismo código `RESERVATION_CONFLICT` que la comprobación previa del servicio.
 
 ## [0.5.0] - 2026-11-03
 

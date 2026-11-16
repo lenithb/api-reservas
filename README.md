@@ -17,7 +17,7 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 - Configurar un horario diario de apertura para cada recurso.
 - Marcar fechas puntuales en las que un recurso no está disponible.
 - Crear series de reservas recurrentes semanales.
-- Evitar reservas superpuestas sobre el mismo recurso.
+- Evitar reservas superpuestas sobre el mismo recurso, incluso si dos peticiones llegan al mismo tiempo.
 - Cancelar una reserva sin borrarla de la base de datos.
 - Filtrar recursos, clientes y reservas.
 - Paginar los listados de recursos, clientes y reservas.
@@ -27,8 +27,8 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 - Python 3.12
 - FastAPI
 - SQLAlchemy 2
-- SQLite
-- Pydantic 2
+- PostgreSQL
+- Pydantic 2 y pydantic-settings
 - Alembic
 - Uvicorn
 - Pytest y HTTPX
@@ -67,19 +67,29 @@ El proyecto trae un archivo de ejemplo para la configuración:
 cp .env.example .env
 ```
 
-En esta versión se configura la conexión a SQLite y las variables de autenticación:
+En esta versión se configura la conexión a PostgreSQL y las variables de autenticación:
 
 ```env
-DATABASE_URL=sqlite:///./reservations.db
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/api_reservas
+TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/api_reservas_test
+APP_ENV=development
 APP_JWT_SECRET=cambiar-por-un-secreto-largo-y-unico
 APP_JWT_EXPIRES_MINUTES=1440
 ```
 
-`APP_JWT_SECRET` firma los tokens de sesión; si no se define, la API usa un secreto de desarrollo que hay que reemplazar antes de exponer la API. `APP_JWT_EXPIRES_MINUTES` define cuánto vale un token (por defecto, 24 horas).
+`DATABASE_URL` es obligatorio y siempre tiene que apuntar a PostgreSQL: la API usa una restricción de exclusión que sólo existe en ese motor. `TEST_DATABASE_URL` es la base separada que usan las pruebas; si no se define, se deriva de `DATABASE_URL` agregando el sufijo `_test`.
 
-El archivo `reservations.db` se crea en la raíz del proyecto y está ignorado por Git.
+`APP_JWT_SECRET` firma los tokens de sesión; si no se define, la API usa un secreto de desarrollo que hay que reemplazar antes de exponer la API. `APP_JWT_EXPIRES_MINUTES` define cuánto vale un token (por defecto, 24 horas). Con `APP_ENV=production` la API se niega a arrancar si el secreto sigue siendo el de desarrollo.
+
+La configuración se lee en un único lugar, `app/config.py`, y valida los valores al arrancar.
 
 ## Crear la base de datos
+
+PostgreSQL tiene que tener disponible la extensión `btree_gist`, que permite comparar un recurso (un entero) dentro de un índice GiST. La migración que crea la restricción de exclusión la instala sola si el usuario de la base tiene permiso:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+```
 
 Alembic se encarga de crear y actualizar las tablas:
 
@@ -126,11 +136,13 @@ FastAPI genera la documentación interactiva automáticamente:
 
 ## Ejecutar las pruebas
 
+Las pruebas necesitan un PostgreSQL disponible. Apuntan a la base `TEST_DATABASE_URL` y, si no existe, la crean solas; después borran las tablas y las vuelven a crear con el esquema actual, y limpian los datos entre pruebas.
+
 ```bash
 pytest
 ```
 
- Las pruebas usan una base SQLite temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente. También hay una suite de autenticación que cubre el login, tokens vencidos o inválidos, permisos por rol y las guardas sobre usuarios administradores.
+ Las pruebas usan una base PostgreSQL temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente. También hay una suite de autenticación que cubre el login, tokens vencidos o inválidos, permisos por rol y las guardas sobre usuarios administradores, y otra suite de concurrencia que lanza ocho peticiones simultáneas sobre el mismo horario y comprueba que sólo queda una reserva creada.
 
 ## Estructura del proyecto
 
@@ -138,6 +150,7 @@ pytest
 api-reservas/
 ├── app/
 │   ├── main.py
+│   ├── config.py
 │   ├── database.py
 │   ├── exceptions.py
 │   ├── auth.py
@@ -334,6 +347,14 @@ Una reserva debe cumplir estas condiciones:
 
 Los horarios pueden tocarse en los extremos. Por ejemplo, si una reserva termina a las 11:00, otra puede comenzar exactamente a las 11:00.
 
+Esa última regla no depende sólo de la aplicación. La tabla `reservations` tiene una restricción de exclusión de PostgreSQL sobre el recurso y el rango horario de cada reserva:
+
+```sql
+EXCLUDE USING gist (resource_id WITH =, period WITH &&) WHERE (status <> 'cancelled')
+```
+
+Si dos peticiones llegan al mismo tiempo, la base de datos serializa la decisión: una gana y la otra recibe un error que la API traduce a `RESERVATION_CONFLICT`, el mismo código que devuelve la comprobación previa. El rango es semiabierto (`[inicio, fin)`) para que dos reservas consecutivas puedan tocarse en el extremo, y las reservas canceladas quedan fuera de la restricción porque ya no ocupan el horario.
+
 Cuando una reserva se cancela, conserva su registro pero deja de ocupar el horario. Si se cambia el recurso, la fecha de inicio o la fecha de finalización, la disponibilidad se comprueba otra vez sin comparar la reserva consigo misma.
 
 Los estados siguen este recorrido sencillo:
@@ -368,17 +389,18 @@ También hay respuestas específicas para recursos, clientes, reservas o usuario
 
 Esta versión está pensada para aprender y seguir creciendo, no para usarla directamente en producción. Algunas limitaciones actuales son:
 
-- SQLite funciona bien para desarrollo y cargas pequeñas, pero no está pensado para mucha concurrencia.
-- La validación de superposiciones se hace desde el servicio y todavía no tiene una protección transaccional fuerte frente a dos solicitudes simultáneas.
 - Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
 - La autenticación es básica: no hay refresh tokens, logout ni cambio de contraseña por el propio usuario.
 - El email de cada usuario puede cambiarse sin pedir la contraseña actual.
+- No hay límite de intentos por login, así que se puede intentar adivinar una contraseña sin límite.
+- Los clientes no tienen usuario propio: cualquier usuario autenticado ve y cancela reservas de cualquier cliente.
 - Las series recurrentes son semanales y no incluyen por ahora edición conjunta.
 - Tampoco hay pagos, precios, notificaciones, recordatorios o lista de espera.
 - El proyecto no incluye frontend, Docker ni configuración de despliegue.
+- La aplicación se despliega sin una configuración formal de logs estructurados ni de CORS.
 
 ## Ideas para continuar
 
-Algunos pasos naturales para futuras versiones serían pasar a PostgreSQL, mejorar el control de concurrencia, sumar refresh tokens y autenticación de los clientes, agregar edición de series recurrentes y notificaciones.
+Algunos pasos naturales para futuras versiones serían sumar refresh tokens y autenticación de los clientes, agregar edición de series recurrentes y notificaciones.
 
 Nada de eso forma parte del próximo release todavía; por ahora el foco está en que la base sea clara, funcional y fácil de modificar.
