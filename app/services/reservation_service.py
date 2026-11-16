@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import Select, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import utc_now
@@ -18,6 +19,37 @@ from app.schemas.reservation import (
 MINIMUM_DURATION = timedelta(minutes=30)
 MAXIMUM_DURATION = timedelta(hours=8)
 MAXIMUM_AVAILABILITY_SEARCH = timedelta(days=7)
+
+# Código de error de PostgreSQL para una violación de restricción de exclusión.
+EXCLUSION_VIOLATION_SQLSTATE = "23P01"
+
+CONFLICT_MESSAGE = (
+    "El recurso ya tiene una reserva que se superpone con el horario solicitado."
+)
+
+
+def is_overlapping_reservation_error(exc: IntegrityError) -> bool:
+    """Indica si el error lo provocó la restricción de exclusión de PostgreSQL."""
+    original = exc.orig
+    sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    return sqlstate == EXCLUSION_VIOLATION_SQLSTATE
+
+
+def commit_reservation_changes(db: Session) -> None:
+    """Guarda los cambios y traduce un solapamiento al error de la API.
+
+    La comprobación previa de disponibilidad vive en el servicio, pero entre
+    esa comprobación y el guardado puede entrar otra reserva. La restricción
+    de exclusión de la base de datos es la que decide en ese caso, y su error
+    se devuelve como RESERVATION_CONFLICT, igual que la comprobación previa.
+    """
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if is_overlapping_reservation_error(exc):
+            raise AppError(409, "RESERVATION_CONFLICT", CONFLICT_MESSAGE) from exc
+        raise
 
 
 def normalize_datetime(value: datetime) -> datetime:
@@ -296,11 +328,7 @@ def ensure_availability(
         exclude_reservation_id,
     )
     if conflicts:
-        raise AppError(
-            409,
-            "RESERVATION_CONFLICT",
-            "El recurso ya tiene una reserva que se superpone con el horario solicitado.",
-        )
+        raise AppError(409, "RESERVATION_CONFLICT", CONFLICT_MESSAGE)
 
 
 def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
@@ -328,7 +356,7 @@ def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
         notes=payload.notes,
     )
     db.add(reservation)
-    db.commit()
+    commit_reservation_changes(db)
     db.refresh(reservation)
     return reservation
 
@@ -371,7 +399,7 @@ def create_recurring_reservations(
         for occurrence_start, occurrence_end in schedule
     ]
     db.add_all(reservations)
-    db.commit()
+    commit_reservation_changes(db)
     for reservation in reservations:
         db.refresh(reservation)
     return reservations
@@ -472,7 +500,7 @@ def update_reservation(
     if requested_status == ReservationStatus.CANCELLED:
         reservation.cancelled_at = utc_now()
 
-    db.commit()
+    commit_reservation_changes(db)
     db.refresh(reservation)
     return reservation
 
