@@ -1,7 +1,8 @@
 from datetime import datetime, time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Integer, JSON, String, Text, Time
+from sqlalchemy import Boolean, Integer, String, Text, Time
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UTCDateTime, utc_now
@@ -21,8 +22,8 @@ class Resource(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     opening_time: Mapped[time | None] = mapped_column(Time)
     closing_time: Mapped[time | None] = mapped_column(Time)
-    closed_dates: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
-    closed_weekdays: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    closed_dates: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    closed_weekdays: Mapped[list[int]] = mapped_column(JSONB, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utc_now, nullable=False
     )
