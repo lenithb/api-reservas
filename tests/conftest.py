@@ -59,7 +59,7 @@ def postgres_engine() -> Iterator[Engine]:
     url = test_database_url()
     ensure_test_database_exists(url)
 
-    engine = create_engine(url, pool_pre_ping=True)
+    engine = create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=10)
     with engine.begin() as connection:
         # La restricción de exclusión necesita la extensión btree_gist.
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
