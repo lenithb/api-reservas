@@ -1,8 +1,14 @@
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import DateTime
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import TypeDecorator
 
 from app.config import get_settings
@@ -41,15 +47,22 @@ def utc_now() -> datetime:
 
 settings = get_settings()
 
-DATABASE_URL = settings.database_url
+# La aplicación usa el driver asíncrono; Alembic y los scripts usan el síncrono.
+DATABASE_URL = settings.database_url_for("asyncpg")
+SYNC_DATABASE_URL = settings.database_url_for("psycopg")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+engine: AsyncEngine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autoflush=False,
+    expire_on_commit=False,
+)
 
 
-async def get_db() -> AsyncGenerator[Session, None]:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     db = SessionLocal()
     try:
         yield db
     finally:
-        db.close()
+        await db.close()

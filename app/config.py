@@ -114,10 +114,16 @@ class Settings(BaseSettings):
         return self.database_url
 
     def database_url_for(self, driver: str) -> str:
-        """Reemplaza el driver de la URL de la base de datos."""
-        base, separator, query = self.database_url.partition("?")
-        base = base.rsplit("+", 1)[0]
-        return f"{base}+{driver}{separator}{query}"
+        """Reemplaza el driver de la URL de la base de datos.
+
+        Permite mantener una sola variable `DATABASE_URL` y usarla tanto con el
+        driver asíncrono de la aplicación como con el síncrono de Alembic.
+        """
+        scheme, separator, rest = self.database_url.partition("://")
+        if not separator:
+            return self.database_url
+        base_scheme = scheme.split("+", 1)[0]
+        return f"{base_scheme}+{driver}://{rest}"
 
 
 @lru_cache
