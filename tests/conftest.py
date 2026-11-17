@@ -5,6 +5,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth import create_access_token, hash_password
@@ -18,7 +19,15 @@ settings = get_settings()
 TABLES_IN_CLEANUP_ORDER = ("reservations", "resources", "customers", "users")
 
 
-def test_database_url() -> str:
+def with_driver(url: str, driver: str) -> str:
+    """Reemplaza el driver de una URL de PostgreSQL."""
+    scheme, separator, rest = url.partition("://")
+    if not separator:
+        return url
+    return f"{scheme.split('+', 1)[0]}+{driver}://{rest}"
+
+
+def test_database_base_url() -> str:
     """URL de la base de datos reservada para las pruebas.
 
     Se puede definir con TEST_DATABASE_URL. Si no está, se deriva del nombre de
@@ -30,8 +39,7 @@ def test_database_url() -> str:
 
     parts = urlsplit(settings.database_url)
     base_name = parts.path.lstrip("/") or "api_reservas"
-    test_name = f"{base_name}_test"
-    return urlunsplit(parts._replace(path=f"/{test_name}"))
+    return urlunsplit(parts._replace(path=f"/{base_name}_test"))
 
 
 def ensure_test_database_exists(url: str) -> None:
@@ -54,9 +62,13 @@ def ensure_test_database_exists(url: str) -> None:
 
 
 @pytest.fixture(scope="session")
-def postgres_engine() -> Iterator[Engine]:
-    """Motor contra la base de pruebas con el esquema ya creado."""
-    url = test_database_url()
+def postgres_database() -> Iterator[Engine]:
+    """Base de pruebas con el esquema ya creado.
+
+    Se maneja con el driver síncrono a propósito: el esquema se crea una sola
+    vez por sesión y así no queda atado al event loop de cada prueba.
+    """
+    url = with_driver(test_database_base_url(), "psycopg")
     ensure_test_database_exists(url)
 
     engine = create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=10)
@@ -73,9 +85,9 @@ def postgres_engine() -> Iterator[Engine]:
 
 
 @pytest.fixture
-def clean_database(postgres_engine: Engine) -> Iterator[None]:
+def clean_database(postgres_database: Engine) -> Iterator[None]:
     """Deja las tablas vacías antes de cada prueba."""
-    with postgres_engine.begin() as connection:
+    with postgres_database.begin() as connection:
         connection.execute(
             text(
                 "TRUNCATE TABLE "
@@ -84,6 +96,32 @@ def clean_database(postgres_engine: Engine) -> Iterator[None]:
             )
         )
     yield
+
+
+@pytest.fixture
+async def async_engine(postgres_database: Engine) -> AsyncGenerator[AsyncEngine, None]:
+    """Motor asíncrono de la aplicación, creado en el event loop de la prueba.
+
+    asyncpg ata cada conexión a su event loop, así que el motor tiene que
+    crearse dentro del loop que va a usarlo.
+    """
+    url = with_driver(test_database_base_url(), "asyncpg")
+    engine = create_async_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=10)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def async_session(
+    async_engine: AsyncEngine, clean_database: None
+) -> AsyncGenerator[AsyncSession, None]:
+    session_factory = async_sessionmaker(
+        bind=async_engine, class_=AsyncSession, autoflush=False, expire_on_commit=False
+    )
+    async with session_factory() as session:
+        yield session
 
 
 class ApiTestContext:
@@ -104,42 +142,39 @@ class ApiTestContext:
 
 @pytest.fixture
 async def test_env(
-    postgres_engine: Engine, clean_database: None
+    async_session: AsyncSession, async_engine: AsyncEngine
 ) -> AsyncGenerator[ApiTestContext, None]:
-    testing_session = sessionmaker(
-        bind=postgres_engine,
-        autoflush=False,
-        expire_on_commit=False,
+    admin = User(
+        full_name="Administrador de prueba",
+        email="admin@example.com",
+        hashed_password=hash_password("admin-password-1"),
+        role="admin",
     )
-
-    with testing_session() as db:
-        admin = User(
-            full_name="Administrador de prueba",
-            email="admin@example.com",
-            hashed_password=hash_password("admin-password-1"),
-            role="admin",
-        )
-        regular = User(
-            full_name="Usuario de prueba",
-            email="usuario@example.com",
-            hashed_password=hash_password("usuario-password-1"),
-            role="user",
-        )
-        db.add_all([admin, regular])
-        db.commit()
-        admin_id, regular_id = admin.id, regular.id
+    regular = User(
+        full_name="Usuario de prueba",
+        email="usuario@example.com",
+        hashed_password=hash_password("usuario-password-1"),
+        role="user",
+    )
+    async_session.add_all([admin, regular])
+    await async_session.commit()
+    admin_id, regular_id = admin.id, regular.id
 
     admin_token, _ = create_access_token(admin_id)
     user_token, _ = create_access_token(regular_id)
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     user_headers = {"Authorization": f"Bearer {user_token}"}
 
-    async def override_get_db() -> AsyncGenerator[Session, None]:
-        db = testing_session()
+    session_factory = async_sessionmaker(
+        bind=async_engine, class_=AsyncSession, autoflush=False, expire_on_commit=False
+    )
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        db = session_factory()
         try:
             yield db
         finally:
-            db.close()
+            await db.close()
 
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
