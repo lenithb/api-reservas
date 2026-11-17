@@ -1,10 +1,11 @@
+import asyncio
 import os
 from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import select
 
-from app.database import SessionLocal
 from app.auth import hash_password
+from app.database import SessionLocal
 from app.models.customer import Customer
 from app.models.resource import Resource
 from app.models.user import User
@@ -12,9 +13,9 @@ from app.schemas.reservation import ReservationCreate
 from app.services.reservation_service import cancel_reservation, create_reservation
 
 
-def ensure_admin_user() -> None:
-    with SessionLocal() as db:
-        if db.scalar(select(User.id).limit(1)) is not None:
+async def ensure_admin_user() -> None:
+    async with SessionLocal() as db:
+        if await db.scalar(select(User.id).limit(1)) is not None:
             return
         admin = User(
             full_name="Administrador",
@@ -25,7 +26,7 @@ def ensure_admin_user() -> None:
             role="admin",
         )
         db.add(admin)
-        db.commit()
+        await db.commit()
         print(f"Usuario administrador creado: {admin.email}")
 
 
@@ -34,10 +35,10 @@ def future_datetime(days: int, hour: int) -> datetime:
     return datetime.combine(target_date, time(hour=hour), timezone.utc)
 
 
-def seed() -> None:
-    ensure_admin_user()
-    with SessionLocal() as db:
-        if db.scalar(select(Resource.id).limit(1)) is not None:
+async def seed() -> None:
+    await ensure_admin_user()
+    async with SessionLocal() as db:
+        if await db.scalar(select(Resource.id).limit(1)) is not None:
             print("La base ya contiene recursos. No se cargaron datos nuevos.")
             return
 
@@ -82,9 +83,9 @@ def seed() -> None:
             ),
         ]
         db.add_all(resources + customers)
-        db.commit()
+        await db.commit()
 
-        first = create_reservation(
+        first = await create_reservation(
             db,
             ReservationCreate(
                 resource_id=resources[0].id,
@@ -95,7 +96,7 @@ def seed() -> None:
                 notes="entrenamiento semanal",
             ),
         )
-        create_reservation(
+        await create_reservation(
             db,
             ReservationCreate(
                 resource_id=resources[1].id,
@@ -106,7 +107,7 @@ def seed() -> None:
                 notes="consulta de ejemplo",
             ),
         )
-        cancelled = create_reservation(
+        cancelled = await create_reservation(
             db,
             ReservationCreate(
                 resource_id=resources[2].id,
@@ -116,7 +117,7 @@ def seed() -> None:
                 notes="reserva que será cancelada",
             ),
         )
-        cancel_reservation(db, cancelled)
+        await cancel_reservation(db, cancelled)
         print(
             f"Datos cargados. Primera reserva confirmada: {first.id}; "
             f"reserva cancelada: {cancelled.id}."
@@ -124,4 +125,4 @@ def seed() -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    asyncio.run(seed())

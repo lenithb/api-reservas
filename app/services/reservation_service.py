@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import utc_now
 from app.exceptions import AppError
@@ -35,7 +35,7 @@ def is_overlapping_reservation_error(exc: IntegrityError) -> bool:
     return sqlstate == EXCLUSION_VIOLATION_SQLSTATE
 
 
-def commit_reservation_changes(db: Session) -> None:
+async def commit_reservation_changes(db: AsyncSession) -> None:
     """Guarda los cambios y traduce un solapamiento al error de la API.
 
     La comprobación previa de disponibilidad vive en el servicio, pero entre
@@ -44,9 +44,9 @@ def commit_reservation_changes(db: Session) -> None:
     se devuelve como RESERVATION_CONFLICT, igual que la comprobación previa.
     """
     try:
-        db.commit()
+        await db.commit()
     except IntegrityError as exc:
-        db.rollback()
+        await db.rollback()
         if is_overlapping_reservation_error(exc):
             raise AppError(409, "RESERVATION_CONFLICT", CONFLICT_MESSAGE) from exc
         raise
@@ -122,22 +122,22 @@ def validate_availability_search_range(
     return start_at, end_at
 
 
-def get_resource_or_error(db: Session, resource_id: int) -> Resource:
-    resource = db.get(Resource, resource_id)
+async def get_resource_or_error(db: AsyncSession, resource_id: int) -> Resource:
+    resource = await db.get(Resource, resource_id)
     if resource is None:
         raise AppError(404, "RESOURCE_NOT_FOUND", "El recurso solicitado no existe.")
     return resource
 
 
-def get_customer_or_error(db: Session, customer_id: int) -> Customer:
-    customer = db.get(Customer, customer_id)
+async def get_customer_or_error(db: AsyncSession, customer_id: int) -> Customer:
+    customer = await db.get(Customer, customer_id)
     if customer is None:
         raise AppError(404, "CUSTOMER_NOT_FOUND", "El cliente solicitado no existe.")
     return customer
 
 
-def get_reservation_or_error(db: Session, reservation_id: int) -> Reservation:
-    reservation = db.get(Reservation, reservation_id)
+async def get_reservation_or_error(db: AsyncSession, reservation_id: int) -> Reservation:
+    reservation = await db.get(Reservation, reservation_id)
     if reservation is None:
         raise AppError(404, "RESERVATION_NOT_FOUND", "La reserva solicitada no existe.")
     return reservation
@@ -262,15 +262,15 @@ def conflict_query(
     return query.order_by(Reservation.start_at)
 
 
-def find_conflicts(
-    db: Session,
+async def find_conflicts(
+    db: AsyncSession,
     resource_id: int,
     start_at: datetime,
     end_at: datetime,
     exclude_reservation_id: int | None = None,
 ) -> list[Reservation]:
     return list(
-        db.scalars(
+        await db.scalars(
             conflict_query(
                 resource_id,
                 start_at,
@@ -281,15 +281,15 @@ def find_conflicts(
     )
 
 
-def find_available_windows(
-    db: Session,
+async def find_available_windows(
+    db: AsyncSession,
     resource_id: int,
     start_at: datetime,
     end_at: datetime,
     minimum_duration: timedelta,
     exclude_reservation_id: int | None = None,
 ) -> list[tuple[datetime, datetime]]:
-    conflicts = find_conflicts(
+    conflicts = await find_conflicts(
         db,
         resource_id,
         start_at,
@@ -313,14 +313,14 @@ def find_available_windows(
     return windows
 
 
-def ensure_availability(
-    db: Session,
+async def ensure_availability(
+    db: AsyncSession,
     resource_id: int,
     start_at: datetime,
     end_at: datetime,
     exclude_reservation_id: int | None = None,
 ) -> None:
-    conflicts = find_conflicts(
+    conflicts = await find_conflicts(
         db,
         resource_id,
         start_at,
@@ -331,9 +331,9 @@ def ensure_availability(
         raise AppError(409, "RESERVATION_CONFLICT", CONFLICT_MESSAGE)
 
 
-def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
-    resource = get_resource_or_error(db, payload.resource_id)
-    get_customer_or_error(db, payload.customer_id)
+async def create_reservation(db: AsyncSession, payload: ReservationCreate) -> Reservation:
+    resource = await get_resource_or_error(db, payload.resource_id)
+    await get_customer_or_error(db, payload.customer_id)
     ensure_resource_is_active(resource)
 
     if payload.status not in {ReservationStatus.PENDING, ReservationStatus.CONFIRMED}:
@@ -345,7 +345,7 @@ def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
 
     start_at, end_at = validate_time_range(payload.start_at, payload.end_at)
     ensure_within_opening_hours(resource, start_at, end_at)
-    ensure_availability(db, payload.resource_id, start_at, end_at)
+    await ensure_availability(db, payload.resource_id, start_at, end_at)
 
     reservation = Reservation(
         resource_id=payload.resource_id,
@@ -356,16 +356,16 @@ def create_reservation(db: Session, payload: ReservationCreate) -> Reservation:
         notes=payload.notes,
     )
     db.add(reservation)
-    commit_reservation_changes(db)
-    db.refresh(reservation)
+    await commit_reservation_changes(db)
+    await db.refresh(reservation)
     return reservation
 
 
-def create_recurring_reservations(
-    db: Session, payload: RecurringReservationCreate
+async def create_recurring_reservations(
+    db: AsyncSession, payload: RecurringReservationCreate
 ) -> list[Reservation]:
-    resource = get_resource_or_error(db, payload.resource_id)
-    get_customer_or_error(db, payload.customer_id)
+    resource = await get_resource_or_error(db, payload.resource_id)
+    await get_customer_or_error(db, payload.customer_id)
     ensure_resource_is_active(resource)
 
     if payload.status not in {ReservationStatus.PENDING, ReservationStatus.CONFIRMED}:
@@ -383,7 +383,9 @@ def create_recurring_reservations(
     ]
     for occurrence_start, occurrence_end in schedule:
         ensure_within_opening_hours(resource, occurrence_start, occurrence_end)
-        ensure_availability(db, payload.resource_id, occurrence_start, occurrence_end)
+        await ensure_availability(
+            db, payload.resource_id, occurrence_start, occurrence_end
+        )
 
     series_id = str(uuid4())
     reservations = [
@@ -399,9 +401,9 @@ def create_recurring_reservations(
         for occurrence_start, occurrence_end in schedule
     ]
     db.add_all(reservations)
-    commit_reservation_changes(db)
+    await commit_reservation_changes(db)
     for reservation in reservations:
-        db.refresh(reservation)
+        await db.refresh(reservation)
     return reservations
 
 
@@ -445,8 +447,8 @@ def validate_status_transition(
         )
 
 
-def update_reservation(
-    db: Session, reservation: Reservation, payload: ReservationUpdate
+async def update_reservation(
+    db: AsyncSession, reservation: Reservation, payload: ReservationUpdate
 ) -> Reservation:
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
@@ -462,9 +464,9 @@ def update_reservation(
     end_at = changes.get("end_at", reservation.end_at)
 
     if "resource_id" in changes:
-        get_resource_or_error(db, resource_id)
+        await get_resource_or_error(db, resource_id)
     if "customer_id" in changes:
-        get_customer_or_error(db, customer_id)
+        await get_customer_or_error(db, customer_id)
 
     schedule_changed = bool({"resource_id", "start_at", "end_at"} & changes.keys())
     confirming_reservation = (
@@ -472,11 +474,11 @@ def update_reservation(
         and requested_status == ReservationStatus.CONFIRMED
     )
     if schedule_changed or confirming_reservation:
-        resource = get_resource_or_error(db, resource_id)
+        resource = await get_resource_or_error(db, resource_id)
         ensure_resource_is_active(resource)
         start_at, end_at = validate_time_range(start_at, end_at)
         ensure_within_opening_hours(resource, start_at, end_at)
-        ensure_availability(
+        await ensure_availability(
             db,
             resource_id,
             start_at,
@@ -500,12 +502,12 @@ def update_reservation(
     if requested_status == ReservationStatus.CANCELLED:
         reservation.cancelled_at = utc_now()
 
-    commit_reservation_changes(db)
-    db.refresh(reservation)
+    await commit_reservation_changes(db)
+    await db.refresh(reservation)
     return reservation
 
 
-def cancel_reservation(db: Session, reservation: Reservation) -> Reservation:
+async def cancel_reservation(db: AsyncSession, reservation: Reservation) -> Reservation:
     if reservation.status == ReservationStatus.CANCELLED:
         raise AppError(
             409,
@@ -515,12 +517,12 @@ def cancel_reservation(db: Session, reservation: Reservation) -> Reservation:
     validate_status_transition(reservation.status, ReservationStatus.CANCELLED)
     reservation.status = ReservationStatus.CANCELLED
     reservation.cancelled_at = utc_now()
-    db.commit()
-    db.refresh(reservation)
+    await db.commit()
+    await db.refresh(reservation)
     return reservation
 
 
-def cancel_recurring_series(db: Session, reservation: Reservation) -> list[Reservation]:
+async def cancel_recurring_series(db: AsyncSession, reservation: Reservation) -> list[Reservation]:
     if reservation.series_id is None:
         raise AppError(
             409,
@@ -529,7 +531,7 @@ def cancel_recurring_series(db: Session, reservation: Reservation) -> list[Reser
         )
 
     reservations = list(
-        db.scalars(
+        await db.scalars(
             select(Reservation)
             .where(
                 Reservation.series_id == reservation.series_id,
@@ -546,7 +548,7 @@ def cancel_recurring_series(db: Session, reservation: Reservation) -> list[Reser
         recurring_reservation.status = ReservationStatus.CANCELLED
         recurring_reservation.cancelled_at = cancelled_at
 
-    db.commit()
+    await db.commit()
     for recurring_reservation in reservations:
-        db.refresh(recurring_reservation)
+        await db.refresh(recurring_reservation)
     return reservations

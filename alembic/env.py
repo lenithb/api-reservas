@@ -4,9 +4,14 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app import models
-from app.database import Base, DATABASE_URL
+from app.config import get_settings
+from app.database import Base
 
 config = context.config
+
+# Alembic trabaja con el driver síncrono, aunque la aplicación use el asíncrono.
+settings = get_settings()
+DATABASE_URL = settings.database_url_for("psycopg")
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:

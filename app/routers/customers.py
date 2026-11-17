@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user, require_admin
 from app.database import get_db
@@ -18,20 +18,20 @@ router = APIRouter(
     tags=["customers"],
     dependencies=[Depends(get_current_user)],
 )
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 def normalized_email(email: object) -> str:
     return str(email).strip().lower()
 
 
-def ensure_email_is_available(
-    db: Session, email: str, exclude_customer_id: int | None = None
+async def ensure_email_is_available(
+    db: AsyncSession, email: str, exclude_customer_id: int | None = None
 ) -> None:
     query = select(Customer.id).where(Customer.email == email)
     if exclude_customer_id is not None:
         query = query.where(Customer.id != exclude_customer_id)
-    if db.scalar(query.limit(1)) is not None:
+    if await db.scalar(query.limit(1)) is not None:
         raise AppError(409, "EMAIL_ALREADY_EXISTS", "El email ya está registrado.")
 
 
@@ -43,7 +43,7 @@ def ensure_email_is_available(
 )
 async def create_customer(payload: CustomerCreate, db: DbSession) -> Customer:
     email = normalized_email(payload.email)
-    ensure_email_is_available(db, email)
+    await ensure_email_is_available(db, email)
     customer = Customer(
         full_name=payload.full_name,
         email=email,
@@ -51,11 +51,11 @@ async def create_customer(payload: CustomerCreate, db: DbSession) -> Customer:
     )
     db.add(customer)
     try:
-        db.commit()
+        await db.commit()
     except IntegrityError as exc:
-        db.rollback()
+        await db.rollback()
         raise AppError(409, "EMAIL_ALREADY_EXISTS", "El email ya está registrado.") from exc
-    db.refresh(customer)
+    await db.refresh(customer)
     return customer
 
 
@@ -73,7 +73,7 @@ async def list_customers(
             or_(Customer.full_name.ilike(pattern), Customer.email.ilike(pattern))
         )
 
-    total = db.scalar(select(func.count(Customer.id)).where(*filters)) or 0
+    total = await db.scalar(select(func.count(Customer.id)).where(*filters)) or 0
     query = (
         select(Customer)
         .where(*filters)
@@ -81,13 +81,13 @@ async def list_customers(
         .offset((page - 1) * limit)
         .limit(limit)
     )
-    items = list(db.scalars(query))
+    items = list(await db.scalars(query))
     return CustomerPage(items=items, page=page, limit=limit, total=total)
 
 
 @router.get("/{customer_id}", response_model=CustomerRead)
 async def get_customer(customer_id: int, db: DbSession) -> Customer:
-    return get_customer_or_error(db, customer_id)
+    return await get_customer_or_error(db, customer_id)
 
 
 @router.patch(
@@ -98,19 +98,19 @@ async def get_customer(customer_id: int, db: DbSession) -> Customer:
 async def update_customer(
     customer_id: int, payload: CustomerUpdate, db: DbSession
 ) -> Customer:
-    customer = get_customer_or_error(db, customer_id)
+    customer = await get_customer_or_error(db, customer_id)
     changes = payload.model_dump(exclude_unset=True)
     if "email" in changes:
         changes["email"] = normalized_email(changes["email"])
-        ensure_email_is_available(db, changes["email"], customer.id)
+        await ensure_email_is_available(db, changes["email"], customer.id)
     for field, value in changes.items():
         setattr(customer, field, value)
     try:
-        db.commit()
+        await db.commit()
     except IntegrityError as exc:
-        db.rollback()
+        await db.rollback()
         raise AppError(409, "EMAIL_ALREADY_EXISTS", "El email ya está registrado.") from exc
-    db.refresh(customer)
+    await db.refresh(customer)
     return customer
 
 
@@ -120,8 +120,8 @@ async def update_customer(
     dependencies=[Depends(require_admin)],
 )
 async def delete_customer(customer_id: int, db: DbSession) -> Response:
-    customer = get_customer_or_error(db, customer_id)
-    has_reservations = db.scalar(
+    customer = await get_customer_or_error(db, customer_id)
+    has_reservations = await db.scalar(
         select(Reservation.id).where(Reservation.customer_id == customer_id).limit(1)
     )
     if has_reservations is not None:
@@ -130,6 +130,6 @@ async def delete_customer(customer_id: int, db: DbSession) -> Response:
             "CUSTOMER_DELETE_NOT_ALLOWED",
             "No se puede eliminar un cliente que tiene reservas asociadas.",
         )
-    db.delete(customer)
-    db.commit()
+    await db.delete(customer)
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
