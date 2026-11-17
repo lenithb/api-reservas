@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
-from app.auth import AuthSession, create_access_token, verify_password
+from app.auth import AuthSession, create_access_token, verify_password_async
 from app.exceptions import AppError
 from app.models.user import User
 from app.schemas.user import Token
@@ -17,7 +17,9 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()], db: AuthSession
 ) -> Token:
     user = await db.scalar(select(User).where(User.email == form.username.strip().lower()))
-    if user is None or not verify_password(form.password, user.hashed_password):
+    if user is None or not await verify_password_async(
+        form.password, user.hashed_password
+    ):
         raise AppError(
             401,
             "AUTH_INVALID_CREDENTIALS",

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import anyio
 import bcrypt
 import jwt
 from fastapi import Depends
@@ -31,6 +32,20 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
     except ValueError:
         return False
+
+
+async def hash_password_async(password: str) -> str:
+    """Calcula el hash en un hilo aparte.
+
+    bcrypt es de uso intensivo de CPU: si se ejecutara en el event loop
+    bloquearía todas las peticiones concurrentes mientras hashea.
+    """
+    return await anyio.to_thread.run_sync(hash_password, password)
+
+
+async def verify_password_async(password: str, hashed_password: str) -> bool:
+    """Verifica la contraseña en un hilo aparte, por la misma razón que el hash."""
+    return await anyio.to_thread.run_sync(verify_password, password, hashed_password)
 
 
 def create_access_token(

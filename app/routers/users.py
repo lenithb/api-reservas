@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.auth import AdminUser, AuthSession, CurrentUser, hash_password
+from app.auth import AdminUser, AuthSession, CurrentUser, hash_password_async
 from app.exceptions import AppError
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPage, UserRead, UserUpdate
@@ -61,7 +61,7 @@ async def create_user(
     user = User(
         full_name=payload.full_name,
         email=email,
-        hashed_password=hash_password(payload.password),
+        hashed_password=await hash_password_async(payload.password),
         role=payload.role,
     )
     db.add(user)
@@ -119,7 +119,7 @@ async def update_user(
         changes["email"] = normalized_email(changes["email"])
         await ensure_user_email_is_available(db, changes["email"], user.id)
     if changes.get("password") is not None:
-        changes["hashed_password"] = hash_password(changes["password"])
+        changes["hashed_password"] = await hash_password_async(changes["password"])
         del changes["password"]
     if "is_active" in changes and changes["is_active"] is False:
         if user.id == admin.id:
