@@ -12,6 +12,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - Restricción de exclusión en PostgreSQL que impide superponer reservas no canceladas del mismo recurso, con la extensión `btree_gist`.
 - Configuración centralizada con pydantic-settings en `app/config.py`, que valida la conexión, el secreto JWT y el entorno de ejecución.
 - Pruebas de concurrencia que lanzan ocho peticiones simultáneas sobre el mismo horario y comprueban que sólo queda una reserva creada.
+- La API es asíncrona de punta a punta: SQLAlchemy en modo asíncrono con asyncpg, con el hash de contraseñas ejecutado en un hilo aparte para no bloquear el event loop.
 
 ### Cambiado
 
@@ -20,6 +21,7 @@ Los cambios importantes del proyecto se documentan en este archivo. El formato s
 - La base de datos pasa de SQLite a PostgreSQL en todos los entornos. `DATABASE_URL` tiene que apuntar a PostgreSQL.
 - Las columnas JSON de los recursos pasan a `JSONB`.
 - El solapamiento rechazado por la base de datos devuelve el mismo código `RESERVATION_CONFLICT` que la comprobación previa del servicio.
+- Alembic y el script de datos de ejemplo siguen usando el driver síncrono de PostgreSQL, que para tareas de línea de comandos resulta más simple.
 
 ## [0.5.0] - 2026-11-03
 

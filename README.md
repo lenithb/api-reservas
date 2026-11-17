@@ -26,7 +26,7 @@ Los cambios de cada versión están documentados en [CHANGELOG.md](CHANGELOG.md)
 
 - Python 3.12
 - FastAPI
-- SQLAlchemy 2
+- SQLAlchemy 2 en modo asíncrono (asyncpg)
 - PostgreSQL
 - Pydantic 2 y pydantic-settings
 - Alembic
@@ -142,7 +142,7 @@ Las pruebas necesitan un PostgreSQL disponible. Apuntan a la base `TEST_DATABASE
 pytest
 ```
 
- Las pruebas usan una base PostgreSQL temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente. También hay una suite de autenticación que cubre el login, tokens vencidos o inválidos, permisos por rol y las guardas sobre usuarios administradores, y otra suite de concurrencia que lanza ocho peticiones simultáneas sobre el mismo horario y comprueba que sólo queda una reserva creada.
+ Las pruebas usan una base PostgreSQL temporal y separada de la base local. Los casos principales cubren fechas incorrectas, límites de duración, distintos tipos de superposición, horarios contiguos, cancelaciones, recursos inactivos y cambios de horario en una reserva existente. También hay una suite de autenticación que cubre el login, tokens vencidos o inválidos, permisos por rol y las guardas sobre usuarios administradores, y otra suite de concurrencia que lanza ocho peticiones simultáneas sobre el mismo horario, tanto a nivel de servicio como a nivel de endpoint, y comprueba que sólo queda una reserva creada.
 
 ## Estructura del proyecto
 
@@ -319,6 +319,17 @@ Un token vencido, un usuario desactivado o un encabezado faltante devuelven `401
 
 El email de cada usuario es único y la contraseña tiene entre 8 y 72 caracteres. Un usuario desactivado no puede iniciar sesión ni validar su token. Para que no quede nadie con permisos, no se puede eliminar el propio usuario, desactivarse a sí mismo, ni quitar o degradar al último administrador activo.
 
+## Cómo se maneja la asincronía
+
+Los endpoints son `async def` de punta a punta: la ruta espera la sesión de SQLAlchemy, la sesión espera a PostgreSQL con asyncpg y el event loop queda libre mientras la base responde. No hay ninguna consulta bloqueante dentro de un endpoint.
+
+Hay dos excepciones, a propósito:
+
+- **Alembic y el script de datos** usan el driver síncrono (`psycopg`). Son tareas de línea de comandos, no atienden peticiones, y en ellas la simplicidad vale más.
+- **El hash de contraseñas con bcrypt** se ejecuta en un hilo aparte (`anyio.to_thread`), porque es de uso intensivo de CPU: hashear en el event loop bloquearía todas las peticiones concurrentes mientras se calcula.
+
+La misma variable `DATABASE_URL` sirve para los dos mundos: el driver se reemplaza según quién la use, así que `postgresql+psycopg://...` sigue siendo la configuración del proyecto.
+
 ## Cómo se manejan las fechas
 
 Todas las fechas de una reserva deben incluir la zona horaria. Por ejemplo, una fecha de Argentina puede enviarse así:
@@ -389,7 +400,7 @@ También hay respuestas específicas para recursos, clientes, reservas o usuario
 
 Esta versión está pensada para aprender y seguir creciendo, no para usarla directamente en producción. Algunas limitaciones actuales son:
 
-- Los endpoints son asíncronos, pero SQLAlchemy se está usando de forma síncrona.
+- Los endpoints son asíncronos de punta a punta y SQLAlchemy también: las consultas se esperan y el event loop queda libre mientras PostgreSQL responde.
 - La autenticación es básica: no hay refresh tokens, logout ni cambio de contraseña por el propio usuario.
 - El email de cada usuario puede cambiarse sin pedir la contraseña actual.
 - No hay límite de intentos por login, así que se puede intentar adivinar una contraseña sin límite.
