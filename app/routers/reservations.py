@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -30,12 +30,12 @@ router = APIRouter(
     tags=["reservations"],
     dependencies=[Depends(get_current_user)],
 )
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post("", response_model=ReservationRead, status_code=status.HTTP_201_CREATED)
 async def create(payload: ReservationCreate, db: DbSession) -> Reservation:
-    return create_reservation(db, payload)
+    return await create_reservation(db, payload)
 
 
 @router.post(
@@ -46,7 +46,7 @@ async def create(payload: ReservationCreate, db: DbSession) -> Reservation:
 async def create_recurring(
     payload: RecurringReservationCreate, db: DbSession
 ) -> list[Reservation]:
-    return create_recurring_reservations(db, payload)
+    return await create_recurring_reservations(db, payload)
 
 
 @router.get("", response_model=ReservationPage)
@@ -86,7 +86,7 @@ async def list_reservations(
         end_boundary = datetime.combine(end_date + timedelta(days=1), time.min, timezone.utc)
         filters.append(Reservation.start_at < end_boundary)
 
-    total = db.scalar(select(func.count(Reservation.id)).where(*filters)) or 0
+    total = await db.scalar(select(func.count(Reservation.id)).where(*filters)) or 0
     query = (
         select(Reservation)
         .where(*filters)
@@ -94,30 +94,30 @@ async def list_reservations(
         .offset((page - 1) * limit)
         .limit(limit)
     )
-    items = list(db.scalars(query))
+    items = list(await db.scalars(query))
     return ReservationPage(items=items, page=page, limit=limit, total=total)
 
 
 @router.get("/{reservation_id}", response_model=ReservationRead)
 async def get_reservation(reservation_id: int, db: DbSession) -> Reservation:
-    return get_reservation_or_error(db, reservation_id)
+    return await get_reservation_or_error(db, reservation_id)
 
 
 @router.patch("/{reservation_id}", response_model=ReservationRead)
 async def update(
     reservation_id: int, payload: ReservationUpdate, db: DbSession
 ) -> Reservation:
-    reservation = get_reservation_or_error(db, reservation_id)
-    return update_reservation(db, reservation, payload)
+    reservation = await get_reservation_or_error(db, reservation_id)
+    return await update_reservation(db, reservation, payload)
 
 
 @router.post("/{reservation_id}/cancel", response_model=ReservationRead)
 async def cancel(reservation_id: int, db: DbSession) -> Reservation:
-    reservation = get_reservation_or_error(db, reservation_id)
-    return cancel_reservation(db, reservation)
+    reservation = await get_reservation_or_error(db, reservation_id)
+    return await cancel_reservation(db, reservation)
 
 
 @router.post("/{reservation_id}/cancel-series", response_model=list[ReservationRead])
 async def cancel_series(reservation_id: int, db: DbSession) -> list[Reservation]:
-    reservation = get_reservation_or_error(db, reservation_id)
-    return cancel_recurring_series(db, reservation)
+    reservation = await get_reservation_or_error(db, reservation_id)
+    return await cancel_recurring_series(db, reservation)

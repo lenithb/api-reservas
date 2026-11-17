@@ -16,7 +16,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()], db: AuthSession
 ) -> Token:
-    user = db.scalar(select(User).where(User.email == form.username.strip().lower()))
+    user = await db.scalar(select(User).where(User.email == form.username.strip().lower()))
     if user is None or not verify_password(form.password, user.hashed_password):
         raise AppError(
             401,

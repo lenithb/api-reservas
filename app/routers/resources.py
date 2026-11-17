@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user, require_admin
 from app.database import get_db
@@ -33,7 +33,7 @@ router = APIRouter(
     tags=["resources"],
     dependencies=[Depends(get_current_user)],
 )
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post(
@@ -47,8 +47,8 @@ async def create_resource(payload: ResourceCreate, db: DbSession) -> Resource:
     values["closed_dates"] = [day.isoformat() for day in payload.closed_dates]
     resource = Resource(**values)
     db.add(resource)
-    db.commit()
-    db.refresh(resource)
+    await db.commit()
+    await db.refresh(resource)
     return resource
 
 
@@ -66,7 +66,7 @@ async def list_resources(
     if is_active is not None:
         filters.append(Resource.is_active == is_active)
 
-    total = db.scalar(select(func.count(Resource.id)).where(*filters)) or 0
+    total = await db.scalar(select(func.count(Resource.id)).where(*filters)) or 0
     query = (
         select(Resource)
         .where(*filters)
@@ -74,7 +74,7 @@ async def list_resources(
         .offset((page - 1) * limit)
         .limit(limit)
     )
-    items = list(db.scalars(query))
+    items = list(await db.scalars(query))
     return ResourcePage(items=items, page=page, limit=limit, total=total)
 
 
@@ -91,7 +91,7 @@ async def list_available_resources(
 ) -> ResourcePage:
     start_at, end_at = validate_time_range(start_at, end_at)
     if exclude_reservation_id is not None:
-        get_reservation_or_error(db, exclude_reservation_id)
+        await get_reservation_or_error(db, exclude_reservation_id)
 
     conflict_filters = [
         Reservation.resource_id == Resource.id,
@@ -113,7 +113,7 @@ async def list_available_resources(
         filters.append(Resource.capacity >= min_capacity)
 
     candidates = list(
-        db.scalars(select(Resource).where(*filters).order_by(Resource.id))
+        await db.scalars(select(Resource).where(*filters).order_by(Resource.id))
     )
     available_resources = [
         resource
@@ -134,15 +134,15 @@ async def list_available_windows(
     minimum_duration_minutes: Annotated[int, Query(ge=30, le=480)] = 30,
     exclude_reservation_id: Annotated[int | None, Query(gt=0)] = None,
 ) -> AvailabilityWindowsRead:
-    resource = get_resource_or_error(db, resource_id)
+    resource = await get_resource_or_error(db, resource_id)
     ensure_resource_is_active(resource)
     if exclude_reservation_id is not None:
-        get_reservation_or_error(db, exclude_reservation_id)
+        await get_reservation_or_error(db, exclude_reservation_id)
     start_at, end_at = validate_availability_search_range(start_at, end_at)
     windows = [
         available_window
         for opening_start, opening_end in opening_windows(resource, start_at, end_at)
-        for available_window in find_available_windows(
+        for available_window in await find_available_windows(
             db,
             resource_id,
             opening_start,
@@ -177,12 +177,12 @@ async def check_availability(
     except ValueError as exc:
         raise AppError(422, "INVALID_DATE_FORMAT", "Las fechas deben usar formato ISO 8601.") from exc
 
-    resource = get_resource_or_error(db, resource_id)
+    resource = await get_resource_or_error(db, resource_id)
     ensure_resource_is_active(resource)
     if exclude_reservation_id is not None:
-        get_reservation_or_error(db, exclude_reservation_id)
+        await get_reservation_or_error(db, exclude_reservation_id)
     parsed_start, parsed_end = validate_time_range(parsed_start, parsed_end)
-    conflicts = find_conflicts(
+    conflicts = await find_conflicts(
         db,
         resource_id,
         parsed_start,
@@ -201,7 +201,7 @@ async def check_availability(
 
 @router.get("/{resource_id}", response_model=ResourceRead)
 async def get_resource(resource_id: int, db: DbSession) -> Resource:
-    return get_resource_or_error(db, resource_id)
+    return await get_resource_or_error(db, resource_id)
 
 
 @router.patch(
@@ -212,7 +212,7 @@ async def get_resource(resource_id: int, db: DbSession) -> Resource:
 async def update_resource(
     resource_id: int, payload: ResourceUpdate, db: DbSession
 ) -> Resource:
-    resource = get_resource_or_error(db, resource_id)
+    resource = await get_resource_or_error(db, resource_id)
     changes = payload.model_dump(exclude_unset=True)
     if "closed_dates" in changes:
         changes["closed_dates"] = [day.isoformat() for day in payload.closed_dates or []]
@@ -237,8 +237,8 @@ async def update_resource(
 
     for field, value in changes.items():
         setattr(resource, field, value)
-    db.commit()
-    db.refresh(resource)
+    await db.commit()
+    await db.refresh(resource)
     return resource
 
 
@@ -248,8 +248,8 @@ async def update_resource(
     dependencies=[Depends(require_admin)],
 )
 async def delete_resource(resource_id: int, db: DbSession) -> Response:
-    resource = get_resource_or_error(db, resource_id)
-    has_reservations = db.scalar(
+    resource = await get_resource_or_error(db, resource_id)
+    has_reservations = await db.scalar(
         select(Reservation.id).where(Reservation.resource_id == resource_id).limit(1)
     )
     if has_reservations is not None:
@@ -258,6 +258,6 @@ async def delete_resource(resource_id: int, db: DbSession) -> Response:
             "RESOURCE_DELETE_NOT_ALLOWED",
             "No se puede eliminar un recurso que tiene reservas asociadas.",
         )
-    db.delete(resource)
-    db.commit()
+    await db.delete(resource)
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
